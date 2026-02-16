@@ -186,6 +186,39 @@ class GemAstroAdmin
                 </div>
             </div>
 
+            <!-- Razorpay Config Banner (Prominent) -->
+            <?php if ($rzp_mode === 'not_set'): ?>
+                <div class="ga-config-banner ga-banner-red">
+                    <div class="ga-banner-icon">⚠️</div>
+                    <div class="ga-banner-content">
+                        <h2>Payment Gateway Not Configured</h2>
+                        <p>You must set your Razorpay API Keys to start accepting payments.</p>
+                    </div>
+                    <a href="<?php echo admin_url('admin.php?page=gem-astrology-settings'); ?>" class="ga-btn ga-banner-btn">⚙
+                        Configure Now</a>
+                </div>
+            <?php elseif ($rzp_mode === 'test'): ?>
+                <div class="ga-config-banner ga-banner-orange">
+                    <div class="ga-banner-icon">🧪</div>
+                    <div class="ga-banner-content">
+                        <h2>Test Mode Active</h2>
+                        <p>Payments are currently in Test Mode. Real money will not be charged.</p>
+                    </div>
+                    <a href="<?php echo admin_url('admin.php?page=gem-astrology-settings'); ?>" class="ga-btn ga-banner-btn">Switch
+                        to Live</a>
+                </div>
+            <?php else: ?>
+                <div class="ga-config-banner ga-banner-green">
+                    <div class="ga-banner-icon">✅</div>
+                    <div class="ga-banner-content">
+                        <h2>Payments Live & Active</h2>
+                        <p>Your Razorpay gateway is connected and ready for business.</p>
+                    </div>
+                    <a href="<?php echo admin_url('admin.php?page=gem-astrology-settings'); ?>"
+                        class="ga-btn ga-banner-btn ga-btn-outline">Manage Keys</a>
+                </div>
+            <?php endif; ?>
+
             <!-- Stats Grid -->
             <div class="ga-stats-grid" id="ga-stats-grid">
                 <div class="ga-stat-card ga-stat-gold">
@@ -757,6 +790,77 @@ class GemAstroAdmin
             50% { transform: scale(1.08); }
             100% { transform: scale(1); }
         }
+
+        /* ====== RAZORPAY BANNER (Prominent) ====== */
+        .ga-config-banner {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            padding: 24px 30px;
+            border-radius: 18px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            position: relative;
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .ga-banner-red {
+            background: linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%);
+            border-color: #ef4444;
+        }
+        .ga-banner-orange {
+            background: linear-gradient(135deg, #7c2d12 0%, #9a3412 100%);
+            border-color: #f97316;
+        }
+        .ga-banner-green {
+            background: linear-gradient(135deg, #064e3b 0%, #065f46 100%);
+            border-color: #10b981;
+        }
+        
+        .ga-banner-icon {
+            font-size: 42px;
+            background: rgba(255,255,255,0.1);
+            width: 70px;
+            height: 70px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            flex-shrink: 0;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        
+        .ga-banner-content { flex: 1; }
+        .ga-banner-content h2 {
+            margin: 0 0 6px 0;
+            color: #fff;
+            font-size: 20px;
+            font-weight: 800;
+            letter-spacing: -0.01em;
+        }
+        .ga-banner-content p {
+            margin: 0;
+            color: rgba(255,255,255,0.8);
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        .ga-banner-btn {
+            padding: 12px 28px;
+            font-size: 14px;
+            background: #fff;
+            color: #1a1033;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.2);
+        }
+        .ga-banner-btn:hover {
+            background: #f8fafc;
+            transform: translateY(-2px);
+            color: #1a1033;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+        }
+        .ga-banner-red .ga-banner-btn { color: #b91c1c; }
+        .ga-banner-orange .ga-banner-btn { color: #c2410c; }
+        .ga-banner-green .ga-banner-btn { color: #047857; }
 
         /* ====== STAT CARDS ====== */
         .ga-stats-grid {
