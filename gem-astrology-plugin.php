@@ -21,6 +21,7 @@ define('GEM_ASTRO_VERSION', '1.0.1');
 // Include necessary files
 require_once GEM_ASTRO_PATH . 'includes/data-mulank.php';
 require_once GEM_ASTRO_PATH . 'includes/class-gem-astro-db.php';
+require_once GEM_ASTRO_PATH . 'includes/compat-curl.php'; // Compatibility for missing cURL
 require_once GEM_ASTRO_PATH . 'includes/class-gem-astro-pdf.php';
 require_once GEM_ASTRO_PATH . 'includes/hindi.php';
 require_once GEM_ASTRO_PATH . 'includes/english.php';
