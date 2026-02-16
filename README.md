@@ -96,7 +96,7 @@ gem-astrology-plugin/
 │
 ├── assets/
 │   └── js/
-│       └── gem-astro-script.js       ← Bridge script for existing forms
+100: │       └── gem-astro-script.js       ← Bridge script for existing forms
 │
 └── fonts/
     ├── logo.jpg                      ← Cover page logo
