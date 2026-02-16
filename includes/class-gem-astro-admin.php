@@ -16,7 +16,9 @@ class GemAstroAdmin
     {
         add_action('admin_menu', [$this, 'register_menus']);
         add_action('admin_init', [$this, 'register_settings']);
-        add_action('admin_enqueue_scripts', [$this, 'admin_styles']);
+
+        // Removed admin_styles enqueue as we are now inlining for guaranteed render
+        // add_action('admin_enqueue_scripts', [$this, 'admin_styles']);
 
         // AJAX: Live stats refresh
         add_action('wp_ajax_gem_astro_live_stats', [$this, 'ajax_live_stats']);
@@ -59,15 +61,6 @@ class GemAstroAdmin
     {
         register_setting('gem_astro_settings', 'gem_astro_razorpay_key');
         register_setting('gem_astro_settings', 'gem_astro_razorpay_secret');
-    }
-
-    public function admin_styles($hook)
-    {
-        if (strpos($hook, 'gem-astrology') === false) {
-            return;
-        }
-        wp_enqueue_style('gem-astro-admin', false);
-        wp_add_inline_style('gem-astro-admin', $this->get_admin_css());
     }
 
     /**
@@ -133,6 +126,9 @@ class GemAstroAdmin
         if (!current_user_can('manage_options')) {
             return;
         }
+
+        // Output Styles Directly (Guarantees Rendering)
+        echo '<style>' . $this->get_admin_css() . '</style>';
 
         $stats = GemAstroDB::get_advanced_stats();
         $recent = GemAstroDB::get_recent_bookings(5);
@@ -513,6 +509,9 @@ class GemAstroAdmin
         if (!current_user_can('manage_options')) {
             return;
         }
+
+        // Output Styles Directly
+        echo '<style>' . $this->get_admin_css() . '</style>';
 
         $saved = isset($_GET['settings-updated']) && $_GET['settings-updated'] === 'true';
         $key = get_option('gem_astro_razorpay_key', '');
