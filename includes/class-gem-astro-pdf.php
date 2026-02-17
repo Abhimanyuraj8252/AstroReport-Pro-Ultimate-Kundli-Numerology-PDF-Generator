@@ -48,46 +48,52 @@ class GemAstroPDF
         }
 
         $language = isset($booking_data['language']) ? $booking_data['language'] : 'en';
+        $langCode = self::normalizeLanguageCode($language);
+        $name = isset($booking_data['name']) ? $booking_data['name'] : 'Guest';
+        $dob = isset($booking_data['dob']) ? $booking_data['dob'] : '';
 
-        // Initialize TCPDF
+        $mulank = self::calculateMulank($dob);
+        $allData = self::getLanguageData($langCode);
+        $sections = isset($allData[$mulank]) && is_array($allData[$mulank]) ? $allData[$mulank] : [];
+
+        if (empty($sections)) {
+            error_log('No data available for Mulank ' . $mulank . ' in language: ' . $langCode);
+            return false;
+        }
+
         $pdf = new TCPDF(PDF_PAGE_ORIENTATION, PDF_UNIT, PDF_PAGE_FORMAT, true, 'UTF-8', false);
-
-        // Set document information
         $pdf->SetCreator('Gem Astrology');
         $pdf->SetAuthor('Gem Astrology');
-        $pdf->SetTitle('Kundli Report - ' . $booking_data['name']);
-
-        // Remove default header/footer
+        $pdf->SetTitle('Kundli Report - ' . $name);
         $pdf->setPrintHeader(false);
         $pdf->setPrintFooter(false);
-        $pdf->SetMargins(15, 15, 15);
+        $pdf->SetMargins(0, 0, 0);
         $pdf->SetAutoPageBreak(TRUE, 15);
+        $pdf->SetFont('freesans', '', 12);
+        $pdf->setImageScale(PDF_IMAGE_SCALE_RATIO);
 
-        // Set Font
-        // 'freesans' supports many languages including Hindi (Devanagari) better than basic fonts.
-        // 'cid0cs' is for CJK. 
-        // We will try 'freesans' which is usually included in TCPDF.
-        $font_family = 'freesans';
+        $seed = crc32($name . $dob);
+        srand($seed);
 
-        $pdf->SetFont($font_family, '', 12);
+        self::renderCoverPage($pdf, $name);
 
-        // --- Cover Page ---
-        $pdf->AddPage();
-        self::drawCoverPage($pdf, $booking_data, $language);
+        $total = count($sections);
+        $chunks = array_chunk($sections, 4);
+        $processed = 0;
 
-        // --- Mulank Section ---
-        $pdf->AddPage();
-        self::drawMulankSection($pdf, $booking_data, $language);
+        foreach ($chunks as $chunk) {
+            $processed += count($chunk);
+            $isLast = ($processed >= $total);
+            self::renderContentPage($pdf, $mulank, $chunk, $isLast);
+        }
 
-        // Output PDF to file
         $upload_dir = wp_upload_dir();
         $gem_astro_dir = $upload_dir['basedir'] . '/gem-astrology-reports/';
         if (!file_exists($gem_astro_dir)) {
             wp_mkdir_p($gem_astro_dir);
         }
 
-        // Add language code to filename to differentiate
-        $filename = 'GemAstro-Report-' . sanitize_file_name($booking_data['name']) . '-' . strtoupper($language) . '-' . time() . '.pdf';
+        $filename = 'GemAstro-Report-' . sanitize_file_name($name) . '-' . strtoupper($langCode) . '-' . time() . '.pdf';
         $file_path = $gem_astro_dir . $filename;
 
         $pdf->Output($file_path, 'F');
@@ -101,84 +107,167 @@ class GemAstroPDF
         return ['path' => $file_path, 'url' => $file_url];
     }
 
-    private static function drawCoverPage($pdf, $data, $lang)
+    private static function normalizeLanguageCode($lang)
     {
-        $pdf->SetFont('freesans', 'B', 24);
-        $pdf->Cell(0, 20, 'GEM Astrology Report', 0, 1, 'C');
-
-        $pdf->Ln(20);
-        $pdf->SetFont('freesans', '', 14);
-
-        $labels = [
-            'hi' => ['name' => 'नाम', 'dob' => 'जन्म तिथि'],
-            'en' => ['name' => 'Name', 'dob' => 'Date of Birth'],
-            'gu' => ['name' => 'નામ', 'dob' => 'જન્મ તારીખ']
-        ];
-
-        // Map generic 'english'/'hindi' to codes if needed, or rely on codes passed
-        $langCode = ($lang == 'hindi') ? 'hi' : (($lang == 'gujarati') ? 'gu' : 'en');
-        // If lang is already 'hi', 'en', 'gu', use it across
-        if (in_array($lang, ['hi', 'en', 'gu'])) {
-            $langCode = $lang;
+        $lang = strtolower(trim((string) $lang));
+        if ($lang === 'hindi' || $lang === 'hi') {
+            return 'hi';
         }
-
-        $l = $labels[$langCode] ?? $labels['en'];
-
-        $pdf->Cell(0, 10, $l['name'] . ': ' . $data['name'], 0, 1, 'C');
-        $pdf->Cell(0, 10, $l['dob'] . ': ' . $data['dob'], 0, 1, 'C');
+        if ($lang === 'gujarati' || $lang === 'gu') {
+            return 'gu';
+        }
+        return 'en';
     }
 
-    private static function drawMulankSection($pdf, $data, $lang)
+    private static function getLanguageData($langCode)
     {
-        $mulank = self::calculateMulank($data['dob']);
+        if ($langCode === 'hi') {
+            return function_exists('getHindiData') ? getHindiData() : [];
+        }
+        if ($langCode === 'gu') {
+            return function_exists('getGujaratiData') ? getGujaratiData() : [];
+        }
+        return function_exists('getEnglishData') ? getEnglishData() : [];
+    }
 
-        // Fetch data based on language
-        // We need to call the global get functions which returned the massive arrays
-        $allData = [];
-        if ($lang === 'hi' || $lang === 'hindi') {
-            $allData = function_exists('getHindiData') ? getHindiData() : [];
-        } elseif ($lang === 'gu' || $lang === 'gujarati') {
-            $allData = function_exists('getGujaratiData') ? getGujaratiData() : [];
+    private static function pickSectionContent($contentRaw)
+    {
+        if (is_array($contentRaw)) {
+            if (isset($contentRaw['variations']) && is_array($contentRaw['variations']) && !empty($contentRaw['variations'])) {
+                $v = $contentRaw['variations'];
+                return (string) $v[rand(0, count($v) - 1)];
+            }
+            if (isset($contentRaw[0])) {
+                return (string) $contentRaw[rand(0, count($contentRaw) - 1)];
+            }
+            return (string) json_encode($contentRaw, JSON_UNESCAPED_UNICODE);
+        }
+        return (string) $contentRaw;
+    }
+
+    private static function renderCoverPage($pdf, $name)
+    {
+        $pdf->AddPage();
+
+        // Base page background (index-like cream)
+        $pdf->SetFillColor(252, 234, 209);
+        $pdf->Rect(0, 0, 210, 297, 'F');
+
+        // Left white panel: 320px of 794px A4 canvas ~= 84.6mm
+        $pdf->SetFillColor(255, 255, 255);
+        $pdf->Rect(0, 0, 84.6, 297, 'F');
+
+        $pdf->SetDrawColor(28, 46, 64);
+        $pdf->SetLineWidth(1);
+        $pdf->Line(84.6, 0, 84.6, 297);
+
+        // Half circle accent (150x300px ~= 39.7x79.3mm)
+        $pdf->SetFillColor(212, 175, 55);
+        if (method_exists($pdf, 'RoundedRect')) {
+            $pdf->RoundedRect(-0.1, 26.5, 39.7, 79.3, 19.8, '1111', 'F');
         } else {
-            $allData = function_exists('getEnglishData') ? getEnglishData() : [];
+            $pdf->Rect(0, 26.5, 39.7, 79.3, 'F');
         }
 
-        $content_data = isset($allData[$mulank]) ? $allData[$mulank] : [];
-
-        if (empty($content_data)) {
-            $pdf->Write(0, "No data available for Mulank $mulank in language: $lang");
-            return;
+        $logoPath = GEM_ASTRO_PATH . 'fonts/logo.jpg';
+        if (file_exists($logoPath)) {
+            // Center inside left panel
+            $pdf->Image($logoPath, 5.3, 122, 74, 0, '', '', '', false, 300);
         }
 
-        $pdf->SetFont('freesans', 'B', 16);
-        $pdf->Cell(0, 10, "Mulank: $mulank", 0, 1, 'L');
-        $pdf->Ln(5);
+        $pdf->SetTextColor(51, 51, 51);
+        $pdf->SetFont('freesans', 'I', 11);
+        $pdf->SetXY(95.2, 21.2);
+        $pdf->Cell(120, 8, 'Let\'s bring you the new life', 0, 1, 'L');
 
-        // Seed random for consistency in PDF too
-        $seed = crc32($data['name'] . $data['dob']);
-        srand($seed);
+        $pdf->SetTextColor(242, 92, 42);
+        $pdf->SetFont('freesans', 'B', 26);
+        $pdf->SetX(95.2);
+        $pdf->MultiCell(105, 14, 'Hello ' . $name . ',', 0, 'L', false, 1);
 
-        foreach ($content_data as $section) {
-            $pdf->SetFont('freesans', 'B', 14);
-            // Handle potentially missing keys if structure varies
-            $heading = $section['heading'] ?? 'Section';
-            $pdf->Cell(0, 10, $heading, 0, 1, 'L');
+        $pdf->SetTextColor(0, 0, 0);
+        $pdf->SetFont('freesans', '', 23);
+        $pdf->SetX(95.2);
+        $pdf->MultiCell(105, 12, "Welcome To\nYour GEM\nASTROLOGY\nReport", 0, 'L', false, 1);
 
-            $pdf->SetFont('freesans', '', 12);
+        $pdf->SetFont('freesans', '', 11);
+        $pdf->SetXY(95.2, 245);
+        $pdf->MultiCell(105, 6, "Prepared by\nwww.niongemastro.com\n+91 910 430 1456\nniongemastro@gmail.com", 0, 'L', false, 1);
+    }
 
+    private static function renderContentPage($pdf, $mulank, $sections, $isLast)
+    {
+        $pdf->AddPage();
+        $pdf->SetFillColor(252, 234, 209);
+        $pdf->Rect(0, 0, 210, 297, 'F');
+
+        $pdf->SetTextColor(0, 0, 0);
+        $pdf->SetFont('freesans', 'B', 17);
+        $pdf->SetXY(14, 16);
+        $pdf->Cell(182, 10, 'Mulank: ' . $mulank, 0, 1, 'L');
+
+        $y = 31;
+
+        foreach ($sections as $section) {
+            $heading = isset($section['heading']) ? (string) $section['heading'] : 'Section';
             $contentRaw = $section['content'] ?? '';
-            $content = '';
+            $content = self::pickSectionContent($contentRaw);
+            $content = str_replace('\\n', "\n", $content);
 
-            if (is_array($contentRaw)) {
-                $content = $contentRaw[rand(0, count($contentRaw) - 1)];
-            } else {
-                $content = $contentRaw;
+            $pdf->SetFont('freesans', 'B', 12);
+            $headingH = $pdf->getStringHeight(176, $heading) + 3;
+            if ($headingH < 9.5) {
+                $headingH = 9.5;
             }
 
-            // Convert literal \n to actual newlines
-            $content = str_replace('\n', "\n", $content);
-            $pdf->MultiCell(0, 10, trim($content), 0, 'L');
-            $pdf->Ln(5);
+            // Heading pill (rounded premium style)
+            $pdf->SetFillColor(242, 92, 42);
+            $pdf->SetTextColor(255, 255, 255);
+            if (method_exists($pdf, 'RoundedRect')) {
+                $pdf->RoundedRect(16, $y, 176, $headingH, 2.4, '1111', 'F');
+            } else {
+                $pdf->Rect(16, $y, 176, $headingH, 'F');
+            }
+            $pdf->SetXY(19, $y + 0.8);
+            $pdf->MultiCell(170, $headingH - 1, $heading, 0, 'L', false, 1, 19, $y + 0.8, true, 0, false, true, $headingH - 1, 'M');
+            $y += $headingH + 2.8;
+
+            $pdf->SetFont('freesans', '', 10.8);
+            $contentH = $pdf->getStringHeight(176, $content) + 7.5;
+            if ($contentH < 13.5) {
+                $contentH = 13.5;
+            }
+
+            // Ensure footer has breathing space on final page
+            $maxY = $isLast ? 264 : 282;
+            if ($y + $contentH > $maxY) {
+                $contentH = max(13.5, $maxY - $y);
+            }
+
+            $pdf->SetFillColor(255, 179, 71);
+            $pdf->SetTextColor(0, 0, 0);
+            if (method_exists($pdf, 'RoundedRect')) {
+                $pdf->RoundedRect(16, $y, 176, $contentH, 3, '1111', 'F');
+            } else {
+                $pdf->Rect(16, $y, 176, $contentH, 'F');
+            }
+            $pdf->SetXY(20, $y + 2.1);
+            $pdf->MultiCell(168, $contentH - 3.8, $content, 0, 'L', false, 1, 20, $y + 2.1, true, 0, false, true, $contentH - 3.8, 'T');
+            $y += $contentH + 5.4;
+        }
+
+        if ($isLast) {
+            $note = 'NOTE: You can call us round the clock for any query regarding your numerology report on +91 910 430 1456';
+            $pdf->SetFillColor(242, 92, 42);
+            $pdf->SetTextColor(255, 255, 255);
+            $pdf->SetFont('freesans', 'B', 9);
+            if (method_exists($pdf, 'RoundedRect')) {
+                $pdf->RoundedRect(16, 276, 176, 10, 2.2, '1111', 'F');
+            } else {
+                $pdf->Rect(16, 276, 176, 10, 'F');
+            }
+            $pdf->SetXY(18, 278.2);
+            $pdf->MultiCell(172, 6, $note, 0, 'C', false, 1, 18, 278.2, true, 0, false, true, 6, 'M');
         }
     }
 }

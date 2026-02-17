@@ -16,6 +16,8 @@
 7. [Testing Karna](#-step-6-testing)
 8. [Price Change Karna](#-step-7-price-change-karna)
 9. [Problems & Solutions](#-problems--solutions)
+10. [const/let Compatibility Note](#-constlet-compatibility-note)
+11. [Any Website Integration Guide](#-any-website-integration-guide)
 
 ---
 
@@ -293,64 +295,90 @@ Payment success                    ─────→ Plugin ko bolo:
 Apne existing JavaScript mein, **Razorpay payment success handler** ke andar, yeh code add karo:
 
 ```javascript
-handler: function(response) {
-    // ══════════════════════════════════════════
-    // ASTROREPORT PRO INTEGRATION — START
-    // ══════════════════════════════════════════
-    
-    // Step 1: User ke form se data lo
-    var userName  = document.getElementById('name').value;
-    var userPhone = document.getElementById('phone').value;
-    var userEmail = document.getElementById('email').value;
-    var userDob   = document.getElementById('dob').value;
+const CFG = Object.assign({}, window.NION_BOOKING || {}, window.NION_BOOKING_CONFIG || {});
+const ajaxUrl = CFG.ajax_url || '/wp-admin/admin-ajax.php';
 
-    // Step 2: Plugin ko bolo — "payment verify karo + PDF banao + email bhejo"
-    var formData = new URLSearchParams();
-    formData.append('action', 'nion_verify_and_save');
-    formData.append('nonce', NION_BOOKING.nonce);
-    
-    // Razorpay ka data
-    formData.append('razorpay_order_id', response.razorpay_order_id);
-    formData.append('razorpay_payment_id', response.razorpay_payment_id);
-    formData.append('razorpay_signature', response.razorpay_signature);
-    
-    // User ka data
-    formData.append('name', userName);
-    formData.append('phone', userPhone);
-    formData.append('email', userEmail);
-    formData.append('dob', userDob);
-    formData.append('booking_type', 'pdf');
-    formData.append('price', 1);
-    formData.append('language', 'hi');
-    formData.append('notes', '');
-    formData.append('date', '');
-    formData.append('time', '');
+function normalizeLanguage(v) {
+   v = String(v || '').trim().toLowerCase();
+   if (v === 'hindi' || v === 'hi') return 'hi';
+   if (v === 'gujarati' || v === 'gu') return 'gu';
+   return 'en';
+}
 
-    fetch(NION_BOOKING.ajax_url, { method: 'POST', body: formData })
-        .then(function(r) { return r.json(); })
-        .then(function(res) {
-            if (res.success && res.data.pdf_url) {
-                // PDF auto-download
-                var link = document.createElement('a');
-                link.href = res.data.pdf_url;
-                link.download = 'Kundli_Report_' + userName + '.pdf';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                
-                alert('✅ Report generated! PDF downloading. Check email for all 3 language reports.');
+function getJsonSafe(res) {
+   return res.text().then(function(raw) {
+      try { return JSON.parse(raw); }
+      catch (e) { return { success: false, message: raw || 'Invalid response' }; }
+   });
+}
+
+async function getNonceSafe() {
+   if (CFG.nonce) return CFG.nonce;
+   const fd = new FormData();
+   fd.append('action', 'nion_get_booking_config');
+   const r = await fetch(ajaxUrl, { method: 'POST', body: fd });
+   const j = await getJsonSafe(r);
+   if (j && j.success && j.data && j.data.nonce) {
+      CFG.nonce = j.data.nonce;
+      return CFG.nonce;
+   }
+   throw new Error('Nonce missing');
+}
+
+handler: async function(response) {
+   try {
+      const nonce = await getNonceSafe();
+
+      // IMPORTANT: IDs ko apne form ke actual IDs ke hisaab se change karo
+      const userName  = document.getElementById('name')?.value?.trim() || '';
+      const userPhone = document.getElementById('phone')?.value?.trim() || '';
+      const userEmail = document.getElementById('email')?.value?.trim() || '';
+      const userDob   = document.getElementById('dob')?.value?.trim() || '';
+      const userLang  = normalizeLanguage(document.getElementById('language')?.value || 'hi');
+
+      const formData = new URLSearchParams();
+      formData.append('action', 'nion_verify_and_save');
+      formData.append('nonce', nonce);
+
+      formData.append('razorpay_order_id', response.razorpay_order_id || '');
+      formData.append('razorpay_payment_id', response.razorpay_payment_id || '');
+      formData.append('razorpay_signature', response.razorpay_signature || '');
+
+      formData.append('name', userName);
+      formData.append('phone', userPhone);
+      formData.append('email', userEmail);
+      formData.append('dob', userDob);
+      formData.append('booking_type', 'pdf');
+      formData.append('price', 1);
+      formData.append('language', userLang);
+      formData.append('notes', '');
+      formData.append('date', '');
+      formData.append('time', '');
+
+      fetch(ajaxUrl, { method: 'POST', body: formData })
+         .then(getJsonSafe)
+         .then(function(res) {
+            if (res && res.success && res.data && res.data.pdf_url) {
+               const link = document.createElement('a');
+               link.href = res.data.pdf_url;
+               link.download = 'Kundli_Report_' + (userName || 'User') + '.pdf';
+               document.body.appendChild(link);
+               link.click();
+               document.body.removeChild(link);
+               alert('✅ Report generated! PDF downloading. Check email for all 3 language reports.');
+            } else if (res && res.success) {
+               alert('✅ Payment successful! Booking saved.');
             } else {
-                alert('✅ Payment successful! Report email sent.');
+               alert('❌ Payment verified but report process failed. Please contact support.');
             }
-        })
-        .catch(function(err) {
+         })
+         .catch(function(err) {
             console.error('AstroReport Error:', err);
-            alert('Payment done! Report will be emailed.');
-        });
-    
-    // ══════════════════════════════════════════
-    // ASTROREPORT PRO INTEGRATION — END
-    // ══════════════════════════════════════════
+            alert('Payment done! Report process failed, contact support.');
+         });
+   } catch (e) {
+      alert('Nonce/config issue. Please refresh page and try again.');
+   }
 }
 ```
 
@@ -549,6 +577,53 @@ var userDob   = document.getElementById('YOUR-DOB-FIELD-ID').value;
 ### Problem 8: "Form field IDs match nahi kar rahe"
 **Solution:**
 - Step B.5 follow karo (Inspect Element se IDs dhundho aur code mein change karo)
+
+### Problem 9: "const/let se issue aa raha hai kya?"
+**Solution:**
+- Nahi, modern WordPress + current browsers mein `const` aur `let` safe hain.
+- Sirf bahut purane browsers (Internet Explorer) mein issue hota hai.
+- Agar aapko legacy support chahiye, toh JS minify/transpile tool (Babel) use karo.
+
+---
+
+## 🔵 const/let Compatibility Note
+
+- `const` ka matlab variable reference re-assign nahi kar sakte.
+- `let` ka matlab variable value update ho sakti hai.
+- Current plugin/frontend logic mein jahan values update hoti hain (jaise nonce/key hydrate), wahan `let` use kiya gaya hai — yeh sahi hai.
+- Jahan value fixed hai (selectors, service list, helper functions), wahan `const` use karna best practice hai.
+- Is pattern se koi WordPress conflict nahi hota.
+
+---
+
+## 🔵 Any Website Integration Guide
+
+### Kya yeh feature kisi bhi website pe add ho sakta hai?
+
+**Haan, lekin backend WordPress plugin active hona zaruri hai.**
+
+Feature ko chalne ke liye yeh endpoints chahiye:
+- `admin-ajax.php?action=nion_get_booking_config`
+- `admin-ajax.php?action=nion_create_rzp_order`
+- `admin-ajax.php?action=nion_verify_and_save`
+
+### 2 supported integration models
+
+1. **Same WordPress website (Recommended)**
+   - Form page usi WP domain pe ho
+   - Directly kaam karega (nonce + AJAX + PDF/email flow)
+
+2. **External website (Non-WP frontend)**
+   - Backend WordPress plugin wali site pe hi rahega
+   - Frontend se WP AJAX endpoints hit karne padenge
+   - CORS allow karna padega (server level)
+   - Nonce securely fetch/use karna padega
+
+### Agar aap “kisi bhi website” pe safest setup chahte ho
+
+- Best approach: form page ko WordPress pe hi host karo.
+- Dusri website se button do jo WP form page pe redirect kare.
+- Isse CORS/security/debugging problems almost zero ho jaati hain.
 
 ---
 
