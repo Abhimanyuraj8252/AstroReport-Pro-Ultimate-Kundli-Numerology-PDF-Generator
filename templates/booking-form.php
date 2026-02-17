@@ -9,7 +9,7 @@
  * - Razorpay payment integration
  * - Full kundli report display after payment (like index.php)
  * - Auto PDF download (html2pdf.js)
- * - Auto email with all 3 language PDFs
+ * - Auto email with selected language PDF
  * - Dynamic report — different each time based on name + DOB
  * - Works on any page, with any theme
  */
@@ -458,12 +458,61 @@ if (!defined('ABSPATH')) {
         // Handles: Payment → AJAX report generation → Display → PDF
         // ============================================================
 
-        const GEM_AJAX_URL = typeof NION_BOOKING !== 'undefined' ? NION_BOOKING.ajax_url : '<?php echo admin_url("admin-ajax.php"); ?>';
-        const GEM_NONCE = typeof NION_BOOKING !== 'undefined' ? NION_BOOKING.nonce : '<?php echo wp_create_nonce("gem_astro_nonce"); ?>';
-        const GEM_RZP_KEY = typeof NION_BOOKING !== 'undefined' ? NION_BOOKING.razorpay_key : '<?php echo esc_attr(get_option("gem_astro_razorpay_key", "")); ?>';
+        let GEM_AJAX_URL = typeof NION_BOOKING !== 'undefined' ? NION_BOOKING.ajax_url : '<?php echo admin_url("admin-ajax.php"); ?>';
+        let GEM_NONCE = typeof NION_BOOKING !== 'undefined' ? NION_BOOKING.nonce : '<?php echo wp_create_nonce("gem_astro_nonce"); ?>';
+        let GEM_RZP_KEY = typeof NION_BOOKING !== 'undefined' ? NION_BOOKING.razorpay_key : '<?php echo esc_attr(get_option("gem_astro_razorpay_key", "")); ?>';
+
+        async function gemEnsureConfig(forceRefresh = false) {
+            if (!forceRefresh && GEM_AJAX_URL && GEM_NONCE && GEM_RZP_KEY) return true;
+            try {
+                const fd = new URLSearchParams();
+                fd.append('action', 'nion_get_booking_config');
+                const res = await fetch(GEM_AJAX_URL || '<?php echo admin_url("admin-ajax.php"); ?>', { method: 'POST', body: fd });
+                const raw = await res.text();
+                const json = JSON.parse(raw);
+                if (json && json.success && json.data) {
+                    GEM_AJAX_URL = json.data.ajax_url || GEM_AJAX_URL;
+                    GEM_NONCE = json.data.nonce || GEM_NONCE;
+                    GEM_RZP_KEY = json.data.razorpay_key || GEM_RZP_KEY;
+                    return !!(GEM_AJAX_URL && GEM_NONCE && GEM_RZP_KEY);
+                }
+            } catch (e) {}
+            return false;
+        }
+
+        async function gemPostWithNonceRetry(buildPayload) {
+            const run = async () => {
+                const payload = buildPayload();
+                const res = await fetch(GEM_AJAX_URL, { method: 'POST', body: payload });
+                return await res.text();
+            };
+
+            let raw = await run();
+            if (raw.trim() === '-1') {
+                const refreshed = await gemEnsureConfig(true);
+                if (!refreshed) throw new Error('Security token refresh failed. Please reload page.');
+                raw = await run();
+            }
+            if (raw.trim() === '-1') {
+                throw new Error('Security nonce invalid/expired. Please refresh and retry.');
+            }
+            return JSON.parse(raw);
+        }
+
+        function gemAutoDownloadPdf(pdfUrl, userName) {
+            if (!pdfUrl) return;
+            const link = document.createElement('a');
+            link.href = pdfUrl;
+            link.download = 'Kundli_Report_' + String(userName || 'User').replace(/\s+/g, '_') + '.pdf';
+            link.target = '_blank';
+            link.rel = 'noopener';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
 
         // Expose to global scope
-        window.gemStartPayment = function () {
+        window.gemStartPayment = async function () {
             const name = document.getElementById('gemName').value.trim();
             const phone = document.getElementById('gemPhone').value.trim();
             const email = document.getElementById('gemEmail').value.trim();
@@ -479,7 +528,8 @@ if (!defined('ABSPATH')) {
                 return;
             }
 
-            if (!GEM_RZP_KEY) {
+            const configOk = await gemEnsureConfig(true);
+            if (!configOk || !GEM_RZP_KEY) {
                 errorDiv.textContent = 'Payment not configured. Contact admin.';
                 errorDiv.style.display = 'block';
                 return;
@@ -490,26 +540,27 @@ if (!defined('ABSPATH')) {
             btn.textContent = 'Processing...';
 
             // Step 1: Create Razorpay Order
-            const orderData = new URLSearchParams();
-            orderData.append('action', 'nion_create_rzp_order');
-            orderData.append('nonce', GEM_NONCE);
-            orderData.append('amount', 1);
-            orderData.append('service', 'pdf');
-
-            fetch(GEM_AJAX_URL, { method: 'POST', body: orderData })
-                .then(r => r.json())
-                .then(res => {
-                    if (res.success) {
-                        openRazorpay(res.data.order_id, { name, phone, email, dob, language });
-                    } else {
-                        showError('Order creation failed: ' + (res.data?.message || 'Unknown error'));
-                        resetBtn();
-                    }
-                })
-                .catch(err => {
-                    showError('Connection error. Try again.');
-                    resetBtn();
+            try {
+                const res = await gemPostWithNonceRetry(() => {
+                    const orderData = new URLSearchParams();
+                    orderData.append('action', 'nion_create_rzp_order');
+                    orderData.append('nonce', GEM_NONCE);
+                    orderData.append('amount', 1);
+                    orderData.append('service', 'Kundali report PDF');
+                    orderData.append('booking_type', 'pdf');
+                    return orderData;
                 });
+
+                if (res && res.success && res.data && res.data.order_id) {
+                    openRazorpay(res.data.order_id, { name, phone, email, dob, language });
+                } else {
+                    showError('Order creation failed: ' + (res?.data?.message || 'Unknown error'));
+                    resetBtn();
+                }
+            } catch (err) {
+                showError(err && err.message ? err.message : 'Connection error. Try again.');
+                resetBtn();
+            }
         };
 
         function openRazorpay(orderId, userData) {
@@ -540,36 +591,40 @@ if (!defined('ABSPATH')) {
             const btn = document.getElementById('gemPayBtn');
             btn.textContent = 'Verifying Payment...';
 
-            const data = new URLSearchParams();
-            data.append('action', 'nion_verify_and_save');
-            data.append('nonce', GEM_NONCE);
-            data.append('razorpay_order_id', rzpResponse.razorpay_order_id);
-            data.append('razorpay_payment_id', rzpResponse.razorpay_payment_id);
-            data.append('razorpay_signature', rzpResponse.razorpay_signature);
-            data.append('name', userData.name);
-            data.append('phone', userData.phone);
-            data.append('email', userData.email);
-            data.append('dob', userData.dob);
-            data.append('booking_type', 'pdf');
-            data.append('price', 1);
-            data.append('language', userData.language);
-            data.append('notes', '');
-
-            fetch(GEM_AJAX_URL, { method: 'POST', body: data })
-                .then(r => r.json())
-                .then(res => {
-                    if (res.success) {
-                        // Payment verified! Now fetch and display report
-                        fetchAndDisplayReport(userData);
-                    } else {
-                        showError('Payment verification failed: ' + (res.data?.message || ''));
-                        resetBtn();
+            gemPostWithNonceRetry(() => {
+                const data = new URLSearchParams();
+                data.append('action', 'nion_verify_and_save');
+                data.append('nonce', GEM_NONCE);
+                data.append('razorpay_order_id', rzpResponse.razorpay_order_id || '');
+                data.append('razorpay_payment_id', rzpResponse.razorpay_payment_id || '');
+                data.append('razorpay_signature', rzpResponse.razorpay_signature || '');
+                data.append('name', userData.name);
+                data.append('phone', userData.phone);
+                data.append('email', userData.email);
+                data.append('dob', userData.dob);
+                data.append('booking_type', 'pdf');
+                data.append('price', 1);
+                data.append('language', userData.language);
+                data.append('notes', '');
+                data.append('date', '');
+                data.append('time', '');
+                return data;
+            })
+            .then(res => {
+                if (res && res.success) {
+                    if (res.data && res.data.pdf_url) {
+                        gemAutoDownloadPdf(res.data.pdf_url, userData.name);
                     }
-                })
-                .catch(err => {
-                    showError('Verification error. Contact support.');
+                    fetchAndDisplayReport(userData);
+                } else {
+                    showError('Payment verification failed: ' + (res?.data?.message || ''));
                     resetBtn();
-                });
+                }
+            })
+            .catch(err => {
+                showError(err && err.message ? err.message : 'Verification error. Contact support.');
+                resetBtn();
+            });
         }
 
         function fetchAndDisplayReport(userData) {
@@ -629,7 +684,7 @@ if (!defined('ABSPATH')) {
             };
 
             html2pdf().set(opt).from(element).save().then(() => {
-                if (statusMsg) statusMsg.innerHTML = '✅ PDF Downloaded! Reports also sent to your email in all 3 languages.';
+                if (statusMsg) statusMsg.innerHTML = '✅ PDF Downloaded! Report also sent to your email in selected language.';
             });
         };
 

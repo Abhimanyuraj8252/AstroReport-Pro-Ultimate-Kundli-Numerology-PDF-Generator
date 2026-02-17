@@ -4,30 +4,83 @@
  * Provides functionality to open the Booking process from existing buttons.
  */
 
-window.openGemAstroBooking = function (type, price, title) {
+const GEM_ASTRO_CONFIG = {
+    ajaxUrl: (window.NION_BOOKING && NION_BOOKING.ajax_url) ? NION_BOOKING.ajax_url : '/wp-admin/admin-ajax.php',
+    nonce: (window.NION_BOOKING && NION_BOOKING.nonce) ? NION_BOOKING.nonce : '',
+    razorpayKey: (window.NION_BOOKING && NION_BOOKING.razorpay_key) ? NION_BOOKING.razorpay_key : ''
+};
+
+async function ensureGemConfig(forceRefresh = false) {
+    if (!forceRefresh && GEM_ASTRO_CONFIG.ajaxUrl && GEM_ASTRO_CONFIG.nonce && GEM_ASTRO_CONFIG.razorpayKey) {
+        return true;
+    }
+
+    try {
+        const fd = new URLSearchParams();
+        fd.append('action', 'nion_get_booking_config');
+        const res = await fetch(GEM_ASTRO_CONFIG.ajaxUrl || '/wp-admin/admin-ajax.php', { method: 'POST', body: fd });
+        const raw = await res.text();
+        const json = JSON.parse(raw);
+        if (json && json.success && json.data) {
+            GEM_ASTRO_CONFIG.ajaxUrl = json.data.ajax_url || GEM_ASTRO_CONFIG.ajaxUrl;
+            GEM_ASTRO_CONFIG.nonce = json.data.nonce || GEM_ASTRO_CONFIG.nonce;
+            GEM_ASTRO_CONFIG.razorpayKey = json.data.razorpay_key || GEM_ASTRO_CONFIG.razorpayKey;
+            return !!(GEM_ASTRO_CONFIG.ajaxUrl && GEM_ASTRO_CONFIG.nonce && GEM_ASTRO_CONFIG.razorpayKey);
+        }
+    } catch (error) {
+        console.error('Config refresh failed', error);
+    }
+    return false;
+}
+
+async function postWithNonceRetry(buildPayload) {
+    const send = async () => {
+        const payload = buildPayload();
+        const res = await fetch(GEM_ASTRO_CONFIG.ajaxUrl, { method: 'POST', body: payload });
+        return await res.text();
+    };
+
+    let raw = await send();
+    if (raw.trim() === '-1') {
+        const refreshed = await ensureGemConfig(true);
+        if (!refreshed) {
+            throw new Error('Security token refresh failed. Please reload page.');
+        }
+        raw = await send();
+    }
+
+    if (raw.trim() === '-1') {
+        throw new Error('Security nonce invalid/expired. Please refresh and retry.');
+    }
+
+    try {
+        return JSON.parse(raw);
+    } catch (error) {
+        throw new Error('Server response invalid. Please try again.');
+    }
+}
+
+function triggerPdfDownload(pdfUrl, fallbackName) {
+    if (!pdfUrl) return;
+    const a = document.createElement('a');
+    a.href = pdfUrl;
+    a.setAttribute('download', `GemAstro-Report-${(fallbackName || 'User').replace(/\s+/g, '_')}.pdf`);
+    a.target = '_blank';
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+}
+
+window.openGemAstroBooking = async function (type, price, title) {
     if (!type) {
         alert("Please specify a service type (e.g., 'pdf').");
         return;
     }
 
-    // We assume there's a modal or form somewhere. 
-    // If the user has their own form, they need to hook this function to their Pay button.
-    // OR create a modal dynamically if one doesn't exist.
-
-    // Since the user said "form nahi bnana" (don't make a form), it implies they HAVE a form.
-    // They just need the PAYMENT processing logic.
-
-    // Let's create a minimal hidden form or use what's available?
-    // Actually, Razorpay needs Order ID first.
-
-    // We need Name, Email, Phone, DOB to be collected.
-    // If the user's form has these fields, we need to grab them.
-    // Let's ask the user to provide the IDs of their input fields.
-    // But for now, we'll try to guess standard IDs or prompt.
-
     const name = document.getElementById('name')?.value || document.getElementById('form-field-name')?.value;
     const email = document.getElementById('email')?.value || document.getElementById('form-field-email')?.value;
-    const phone = document.getElementById('phone')?.value || document.getElementById('form-field-phone')?.value; // Elementor often uses form-field-ID
+    const phone = document.getElementById('phone')?.value || document.getElementById('form-field-phone')?.value;
     const dob = document.getElementById('dob')?.value || document.getElementById('form-field-dob')?.value;
     const language = document.getElementById('language')?.value || document.getElementById('form-field-language')?.value || 'hi';
 
@@ -36,119 +89,129 @@ window.openGemAstroBooking = function (type, price, title) {
         return;
     }
 
-    // Call Backend to Create Order
-    const data = new URLSearchParams();
-    data.append('action', 'nion_create_rzp_order');
-    data.append('nonce', NION_BOOKING.nonce);
-    data.append('amount', price);
-    data.append('service', type);
-
-    const btn = event.target;
-    const originalText = btn.innerText;
+    const clickedButton = (typeof event !== 'undefined' && event && event.target) ? event.target : null;
+    const btn = clickedButton || { disabled: false, innerText: 'Pay Now' };
+    const originalText = btn.innerText || 'Pay Now';
     btn.innerText = "Processing...";
     btn.disabled = true;
 
-    fetch(NION_BOOKING.ajax_url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: data
-    })
-        .then(r => r.json())
-        .then(res => {
-            if (res.success) {
-                const options = {
-                    key: NION_BOOKING.razorpay_key,
-                    amount: res.data.order_id ? price * 100 : 0,
-                    currency: "INR",
-                    name: "Gem Astrology",
-                    description: title || "Astrology Service",
-                    order_id: res.data.order_id,
-                    handler: function (response) {
-                        verifyPayment(response, { name, email, phone, dob, language, type, price }, btn, originalText);
-                    },
-                    prefill: {
-                        name: name,
-                        email: email,
-                        contact: phone
-                    },
-                    modal: {
-                        ondismiss: function () {
-                            btn.disabled = false;
-                            btn.innerText = originalText;
-                        }
-                    }
-                };
-                const rzp = new Razorpay(options);
-                rzp.open();
-            } else {
-                alert('Error: ' + (res.data ? res.data.message : 'Unknown error'));
-                btn.disabled = false;
-                btn.innerText = originalText;
+    const cfgOk = await ensureGemConfig(true);
+    if (!cfgOk || !window.Razorpay || !GEM_ASTRO_CONFIG.razorpayKey) {
+        alert('Payment not configured. Please contact admin.');
+        btn.disabled = false;
+        btn.innerText = originalText;
+        return;
+    }
+
+    try {
+        const orderRes = await postWithNonceRetry(() => {
+            const data = new URLSearchParams();
+            data.append('action', 'nion_create_rzp_order');
+            data.append('nonce', GEM_ASTRO_CONFIG.nonce);
+            data.append('amount', String(price));
+            data.append('service', title || type);
+            data.append('booking_type', type);
+            data.append('date', '');
+            data.append('time', '');
+            return data;
+        });
+
+        if (!(orderRes && orderRes.success && orderRes.data && orderRes.data.order_id)) {
+            throw new Error(orderRes?.data?.message || 'Order creation failed.');
+        }
+
+        const options = {
+            key: GEM_ASTRO_CONFIG.razorpayKey,
+            amount: Number(price) * 100,
+            currency: 'INR',
+            name: 'Gem Astrology',
+            description: title || 'Astrology Service',
+            order_id: orderRes.data.order_id,
+            handler: function (response) {
+                verifyPayment(response, { name, email, phone, dob, language, type, price }, btn, originalText);
+            },
+            prefill: {
+                name,
+                email,
+                contact: phone
+            },
+            modal: {
+                ondismiss: function () {
+                    btn.disabled = false;
+                    btn.innerText = originalText;
+                }
             }
-        })
-        .catch(err => {
-            console.error(err);
-            alert('Connection Error');
+        };
+
+        const rzp = new Razorpay(options);
+        rzp.on('payment.failed', function () {
+            alert('Payment failed. Please try again.');
             btn.disabled = false;
             btn.innerText = originalText;
         });
+        rzp.open();
+    } catch (error) {
+        console.error(error);
+        alert(error.message || 'Connection Error');
+        btn.disabled = false;
+        btn.innerText = originalText;
+    }
 };
 
 window.verifyNionGemPayment = function (response, userData) {
     verifyPayment(response, userData, {
         disabled: false,
-        innerText: 'Pay Now' // Dummy button state object
+        innerText: 'Pay Now'
     }, 'Pay Now');
 };
 
-function verifyPayment(response, data, btn, originalText) {
-    // Ensure data has defaults if missing
+async function verifyPayment(response, data, btn, originalText) {
     data = data || {};
     data.language = data.language || 'hi';
     data.type = data.type || 'pdf';
-    data.price = data.price || 0;
+    data.price = Number(data.price || 0);
 
-    const postData = new URLSearchParams();
-    postData.append('action', 'nion_verify_and_save');
-    postData.append('nonce', NION_BOOKING.nonce);
-    postData.append('razorpay_order_id', response.razorpay_order_id);
-    postData.append('razorpay_payment_id', response.razorpay_payment_id);
-    postData.append('razorpay_signature', response.razorpay_signature);
+    try {
+        const cfgOk = await ensureGemConfig(true);
+        if (!cfgOk) {
+            throw new Error('Config load failed. Please refresh page.');
+        }
 
-    // If userData is passed from existing form, use it
-    if (data.name) postData.append('name', data.name);
-    if (data.phone) postData.append('phone', data.phone);
-    if (data.email) postData.append('email', data.email);
-    if (data.dob) postData.append('dob', data.dob);
-
-    postData.append('booking_type', data.type);
-    postData.append('price', data.price);
-    postData.append('language', data.language);
-
-    fetch(NION_BOOKING.ajax_url, {
-        method: 'POST',
-        body: postData
-    })
-        .then(r => r.json())
-        .then(res => {
-            if (res.success) {
-                if (res.data.pdf_url) {
-                    const link = document.createElement('a');
-                    link.href = res.data.pdf_url;
-                    link.setAttribute('download', 'GemAstro-Report.pdf');
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                    alert('Success! PDF is downloading.');
-                } else {
-                    alert('Success! Check email.');
-                }
-            } else {
-                console.error('Verification Failed: ' + res.data.message);
-                alert('Verification Failed. Please contact support.');
-            }
-        })
-        .catch(err => {
-            console.error(err);
+        const verifyRes = await postWithNonceRetry(() => {
+            const postData = new URLSearchParams();
+            postData.append('action', 'nion_verify_and_save');
+            postData.append('nonce', GEM_ASTRO_CONFIG.nonce);
+            postData.append('razorpay_order_id', response.razorpay_order_id || '');
+            postData.append('razorpay_payment_id', response.razorpay_payment_id || '');
+            postData.append('razorpay_signature', response.razorpay_signature || '');
+            postData.append('name', data.name || '');
+            postData.append('phone', data.phone || '');
+            postData.append('email', data.email || '');
+            postData.append('dob', data.dob || '');
+            postData.append('booking_type', data.type);
+            postData.append('price', String(data.price));
+            postData.append('language', data.language);
+            postData.append('date', '');
+            postData.append('time', '');
+            postData.append('notes', '');
+            return postData;
         });
+
+        if (verifyRes && verifyRes.success) {
+            if (verifyRes.data && verifyRes.data.pdf_url) {
+                triggerPdfDownload(verifyRes.data.pdf_url, data.name);
+                alert('Success! PDF is downloading and report sent on email.');
+            } else {
+                alert('Success! Booking saved. Check email.');
+            }
+        } else {
+            throw new Error(verifyRes?.data?.message || 'Verification failed.');
+        }
+    } catch (error) {
+        console.error(error);
+        alert(error.message || 'Verification failed. Please contact support.');
+    } finally {
+        btn.disabled = false;
+        btn.innerText = originalText;
+    }
 }

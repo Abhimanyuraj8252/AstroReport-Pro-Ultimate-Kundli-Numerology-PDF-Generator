@@ -73,6 +73,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $name = $_POST['name'] ?? '';
     $dob = $_POST['dob'] ?? '';
     $email = $_POST['email'] ?? '';
+    $language = $_POST['language'] ?? 'hi';
+
+    $langMap = [
+        'hindi' => 'hi',
+        'english' => 'en',
+        'gujarati' => 'gu',
+        'hi' => 'hi',
+        'en' => 'en',
+        'gu' => 'gu'
+    ];
+    $language = $langMap[$language] ?? 'hi';
 
     if (empty($name) || empty($dob) || empty($email)) {
         echo "Error: Missing required fields.";
@@ -82,36 +93,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $booking_data = [
         'name' => $name,
         'dob' => $dob,
-        'email' => $email
+        'email' => $email,
+        'language' => $language
     ];
 
-    // Generate Reports for all 3 languages
-    $languages = ['en', 'hi', 'gu'];
-    $attachments = [];
+    // Generate report in selected language only
+    $result = GemAstroPDF::generate_report($booking_data);
+    $selected_attachment = (is_array($result) && !empty($result['path']) && file_exists($result['path']))
+        ? $result['path']
+        : '';
 
-    foreach ($languages as $lang) {
-        $booking_data['language'] = $lang;
-        $result = GemAstroPDF::generate_report($booking_data); // Changed method name to separate generation from sending
-        if ($result && file_exists($result['path'])) {
-            $attachments[] = $result['path'];
-        }
-    }
-
-    if (!empty($attachments)) {
-        // Send one email with all attachments
+    if (!empty($selected_attachment)) {
+        // Send one email with selected language attachment
         $to = $email;
-        $subject = '🌟 Your Personalized GEM Astrology Reports (All Languages)';
+        $subject = '🌟 Your Personalized GEM Astrology Report';
         $body = "<h1>Namaste $name,</h1>";
-        $body .= "<p>Thank you for choosing Nion Gem Astro. Please find your personalized astrology reports attached in English, Hindi, and Gujarati.</p>";
+        $body .= "<p>Thank you for choosing Nion Gem Astro. Your personalized astrology report is attached in your selected language.</p>";
         $body .= "<p><strong>Note:</strong> Save these files for future reference.</p>";
         $body .= "<p>Regards,<br>Team Nion Gem Astro</p>";
         
         $headers = ['Content-Type: text/html; charset=UTF-8'];
         
-        $sent = wp_mail($to, $subject, $body, $headers, $attachments);
+        $sent = wp_mail($to, $subject, $body, $headers, [$selected_attachment]);
         
         if ($sent) {
-            echo "Success: Email sent with " . count($attachments) . " report(s).";
+            echo "Success: Email sent with selected language report.";
         } else {
             echo "Error: Failed to send email.";
         }

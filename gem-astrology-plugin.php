@@ -160,6 +160,15 @@ class GemAstrologyPlugin
         // }
 
         $selected_language = sanitize_text_field($_POST['language'] ?? 'hi');
+        $language_map = [
+            'hindi' => 'hi',
+            'english' => 'en',
+            'gujarati' => 'gu',
+            'hi' => 'hi',
+            'en' => 'en',
+            'gu' => 'gu'
+        ];
+        $selected_language = $language_map[$selected_language] ?? 'hi';
 
         $booking_data = [
             'name' => sanitize_text_field($_POST['name']),
@@ -182,36 +191,28 @@ class GemAstrologyPlugin
             $pdf_url = '';
 
             if ($booking_data['service_type'] === 'pdf') {
-                // 1. Generate PDF in SELECTED language for instant download
+                // Generate PDF in selected language for both download and email
                 $booking_data['language'] = $selected_language;
                 $download_result = GemAstroPDF::generate_report($booking_data);
+                $selected_pdf_path = '';
+
                 if (is_array($download_result) && isset($download_result['url'])) {
                     $pdf_url = $download_result['url'];
+                    $selected_pdf_path = $download_result['path'] ?? '';
                 } else {
                     error_log('PDF Generation failed for booking ' . $booking_id);
                 }
 
-                // 2. Generate PDFs in ALL 3 languages and email them
-                $all_languages = ['hi', 'en', 'gu'];
-                $attachments = [];
-                foreach ($all_languages as $lang) {
-                    $booking_data['language'] = $lang;
-                    $result = GemAstroPDF::generate_report($booking_data);
-                    if (is_array($result) && isset($result['path']) && file_exists($result['path'])) {
-                        $attachments[] = $result['path'];
-                    }
-                }
-
-                // Send email with all 3 PDFs attached
-                if (!empty($attachments) && !empty($booking_data['email'])) {
+                // Send email with selected language PDF only
+                if (!empty($selected_pdf_path) && file_exists($selected_pdf_path) && !empty($booking_data['email'])) {
                     $to = $booking_data['email'];
-                    $subject = '🌟 Your Personalized AstroReport Pro Reports (All Languages)';
+                    $subject = '🌟 Your Personalized AstroReport Pro Report';
                     $body = '<h1>Namaste ' . esc_html($booking_data['name']) . ',</h1>';
-                    $body .= '<p>Thank you for choosing AstroReport Pro. Please find your personalized astrology reports attached in English, Hindi, and Gujarati.</p>';
+                    $body .= '<p>Thank you for choosing AstroReport Pro. Your personalized astrology report is attached in your selected language.</p>';
                     $body .= '<p><strong>Note:</strong> Save these files for future reference.</p>';
                     $body .= '<p>Regards,<br>Team Trikrypta</p>';
                     $headers = ['Content-Type: text/html; charset=UTF-8'];
-                    wp_mail($to, $subject, $body, $headers, $attachments);
+                    wp_mail($to, $subject, $body, $headers, [$selected_pdf_path]);
                 }
             }
 

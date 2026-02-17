@@ -580,7 +580,7 @@ class GemAstroPDF
         $pdf->Cell(0, 12, 'Kundli Report - ' . $name, 0, 1, 'L');
         self::setLangFont($pdf, $langCode, 12, false, false);
         $pdf->Ln(3);
-        $pdf->MultiCell(0, 7, 'Prepared by: ' . (string) ($brand['website_name'] ?? 'Trikrypta')); 
+        $pdf->MultiCell(0, 7, 'Prepared by: ' . (string) ($brand['website_name'] ?? 'Trikrypta'));
         $pdf->MultiCell(0, 7, 'Website: ' . (string) ($brand['website_url'] ?? ''));
         $pdf->MultiCell(0, 7, 'Phone: ' . (string) ($brand['phone'] ?? ''));
         $pdf->MultiCell(0, 7, 'Email: ' . (string) ($brand['email'] ?? ''));

@@ -569,6 +569,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 formData.append('name', '<?= htmlspecialchars($name) ?>');
                 formData.append('dob', '<?= htmlspecialchars($dob) ?>');
                 formData.append('email', '<?= htmlspecialchars($_POST['email'] ?? '') ?>'); // Get email from POST
+                formData.append('language', '<?= htmlspecialchars($_POST['language'] ?? 'hi') ?>');
 
                 fetch('includes/send-report.php', {
                     method: 'POST',
@@ -578,7 +579,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     .then(data => {
                         console.log('Email Response:', data);
                         const statusArea = document.getElementById('status-area');
-                        statusArea.innerHTML += "<br>Email sent with reports in 3 languages!";
+                        statusArea.innerHTML += "<br>Email sent in selected language.";
                     })
                     .catch(error => {
                         console.error('Error sending email:', error);
