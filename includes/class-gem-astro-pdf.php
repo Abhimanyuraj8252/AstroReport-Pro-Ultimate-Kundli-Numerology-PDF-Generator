@@ -84,10 +84,11 @@ class GemAstroPDF
             $chunks = array_chunk($sections, 4);
             $processed = 0;
 
-            foreach ($chunks as $chunk) {
+            foreach ($chunks as $index => $chunk) {
                 $processed += count($chunk);
                 $isLast = ($processed >= $total);
-                self::renderContentPage($pdf, $mulank, $chunk, $isLast, $brand, $langCode);
+                $showMulankOnThisPage = ($index === 0);
+                self::renderContentPage($pdf, $mulank, $chunk, $isLast, $showMulankOnThisPage, $brand, $langCode);
             }
 
             self::renderFinalNotePage($pdf, $brand);
@@ -386,19 +387,22 @@ class GemAstroPDF
         }
     }
 
-    private static function renderContentPage($pdf, $mulank, $sections, $isLast, $brand, $langCode)
+    private static function renderContentPage($pdf, $mulank, $sections, $isLast, $showMulank, $brand, $langCode)
     {
         $pdf->AddPage();
         $pdf->SetFillColor(252, 234, 209);
         $pdf->Rect(0, 0, 210, 297, 'F');
 
         $pdf->SetTextColor(0, 0, 0);
-        // Keep Mulank title in Latin-safe font to avoid box glyphs on some Gujarati TTFs
-        $pdf->SetFont('freesans', 'B', 17);
-        $pdf->SetXY(14, 16);
-        $pdf->Cell(182, 10, self::getMulankLabel($langCode) . ': ' . $mulank, 0, 1, 'L');
+        $y = 16;
 
-        $y = 31;
+        if ($showMulank) {
+            // Keep Mulank title in Latin-safe font to avoid box glyphs on some Gujarati TTFs
+            $pdf->SetFont('freesans', 'B', 17);
+            $pdf->SetXY(14, 16);
+            $pdf->Cell(182, 10, self::getMulankLabel($langCode) . ': ' . $mulank, 0, 1, 'L');
+            $y = 31;
+        }
 
         foreach ($sections as $section) {
             $heading = isset($section['heading']) ? (string) $section['heading'] : 'Section';
