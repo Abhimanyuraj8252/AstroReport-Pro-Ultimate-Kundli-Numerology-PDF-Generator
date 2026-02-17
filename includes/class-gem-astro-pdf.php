@@ -171,7 +171,39 @@ class GemAstroPDF
             'website_url' => $getOption('gem_astro_website_url', 'https://abhimanyu-raj-cse.vercel.app/'),
             'phone' => $getOption('gem_astro_contact_phone', '+91 9801834437'),
             'email' => $getOption('gem_astro_contact_email', 'novanexusltd001@gmail.com'),
+            'cover_logo' => $getOption('gem_astro_cover_logo', ''),
+            'cover_welcome_text' => $getOption('gem_astro_cover_welcome_text', "Welcome To\nYour GEM\nASTROLOGY\nReport"),
         ];
+    }
+
+    private static function resolveBrandLogoPath($logo)
+    {
+        $logo = trim((string) $logo);
+        if (empty($logo)) {
+            return '';
+        }
+
+        if (strpos($logo, 'http://') === 0 || strpos($logo, 'https://') === 0) {
+            if (function_exists('wp_get_upload_dir')) {
+                $upload = wp_get_upload_dir();
+                $baseurl = rtrim((string) ($upload['baseurl'] ?? ''), '/');
+                $basedir = rtrim((string) ($upload['basedir'] ?? ''), '/');
+                if (!empty($baseurl) && !empty($basedir) && strpos($logo, $baseurl) === 0) {
+                    $relative = substr($logo, strlen($baseurl));
+                    $candidate = $basedir . $relative;
+                    if (file_exists($candidate)) {
+                        return $candidate;
+                    }
+                }
+            }
+            return $logo;
+        }
+
+        if (file_exists($logo)) {
+            return $logo;
+        }
+
+        return '';
     }
 
     private static function getLanguageFontFamily($langCode, $bold = false)
@@ -270,9 +302,17 @@ class GemAstroPDF
         $pdf->SetLineWidth(1.1);
         $pdf->Line(106, 18, 106, 204);
 
-        $logoPath = GEM_ASTRO_PATH . 'fonts/logo.jpg';
-        if (file_exists($logoPath)) {
+        $logoPath = self::resolveBrandLogoPath((string) ($brand['cover_logo'] ?? ''));
+        if (empty($logoPath)) {
+            $defaultLogo = GEM_ASTRO_PATH . 'fonts/logo.jpg';
+            if (file_exists($defaultLogo)) {
+                $logoPath = $defaultLogo;
+            }
+        }
+
+        if (!empty($logoPath)) {
             $pdf->Image($logoPath, 112, 10, 34, 0, '', '', '', false, 300);
+            $pdf->Image($logoPath, 20, 84, 72, 0, '', '', '', false, 300);
         }
 
         $pdf->SetTextColor(10, 42, 134);
@@ -293,7 +333,9 @@ class GemAstroPDF
         $pdf->SetTextColor(0, 0, 0);
         $pdf->SetFont('freesans', '', 18.5);
         $pdf->SetXY(110, 84);
-        $pdf->MultiCell(90, 10, "Welcome To\nYour GEM\nASTROLOGY\nReport", 0, 'L', false, 1);
+        $welcomeText = (string) ($brand['cover_welcome_text'] ?? "Welcome To\nYour GEM\nASTROLOGY\nReport");
+        $welcomeText = str_replace(["\r\n", "\r"], "\n", $welcomeText);
+        $pdf->MultiCell(90, 10, $welcomeText, 0, 'L', false, 1);
 
         $websiteDisplay = self::getWebsiteDisplay($brand);
 

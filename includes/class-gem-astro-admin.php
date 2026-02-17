@@ -16,6 +16,7 @@ class GemAstroAdmin
     {
         add_action('admin_menu', [$this, 'register_menus']);
         add_action('admin_init', [$this, 'register_settings']);
+        add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_assets']);
 
         // Removed admin_styles enqueue as we are now inlining for guaranteed render
         // add_action('admin_enqueue_scripts', [$this, 'admin_styles']);
@@ -67,6 +68,22 @@ class GemAstroAdmin
         register_setting('gem_astro_settings', 'gem_astro_website_url');
         register_setting('gem_astro_settings', 'gem_astro_contact_phone');
         register_setting('gem_astro_settings', 'gem_astro_contact_email');
+        register_setting('gem_astro_settings', 'gem_astro_cover_logo');
+        register_setting('gem_astro_settings', 'gem_astro_cover_welcome_text');
+    }
+
+    public function enqueue_admin_assets($hook)
+    {
+        if (!isset($_GET['page'])) {
+            return;
+        }
+
+        $page = sanitize_key($_GET['page']);
+        if ($page !== 'gem-astrology' && $page !== 'gem-astrology-settings') {
+            return;
+        }
+
+        wp_enqueue_media();
     }
 
     /**
@@ -151,6 +168,8 @@ class GemAstroAdmin
         $website_url = get_option('gem_astro_website_url', 'https://abhimanyu-raj-cse.vercel.app/');
         $contact_phone = get_option('gem_astro_contact_phone', '+91 9801834437');
         $contact_email = get_option('gem_astro_contact_email', 'novanexusltd001@gmail.com');
+        $cover_logo = get_option('gem_astro_cover_logo', '');
+        $cover_welcome_text = get_option('gem_astro_cover_welcome_text', "Welcome To\nYour GEM\nASTROLOGY\nReport");
         $rzp_mode = '';
         if (empty($razorpay_key)) {
             $rzp_mode = 'not_set';
@@ -276,6 +295,23 @@ class GemAstroAdmin
                             <label for="ga_home_email">Email</label>
                             <input type="text" id="ga_home_email" name="gem_astro_contact_email"
                                 value="<?php echo esc_attr($contact_email); ?>" class="ga-input ga-input-mono">
+                        </div>
+
+                        <div class="ga-form-group" style="grid-column:1/-1;">
+                            <label for="ga_home_cover_logo">Cover Logo (Top + Side)</label>
+                            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                                <input type="text" id="ga_home_cover_logo" name="gem_astro_cover_logo"
+                                    value="<?php echo esc_attr($cover_logo); ?>" class="ga-input ga-input-mono ga-logo-url"
+                                    placeholder="https://example.com/logo.png" style="flex:1;min-width:280px;">
+                                <button type="button" class="ga-btn ga-btn-ghost ga-logo-picker">Select Logo</button>
+                            </div>
+                        </div>
+
+                        <div class="ga-form-group" style="grid-column:1/-1;">
+                            <label for="ga_home_cover_welcome_text">Cover Welcome Text</label>
+                            <textarea id="ga_home_cover_welcome_text" name="gem_astro_cover_welcome_text" rows="4"
+                                class="ga-input"><?php echo esc_textarea($cover_welcome_text); ?></textarea>
+                            <small class="ga-help">Yeh text cover page par "Welcome To Your GEM ASTROLOGY Report" ki jagah show hoga.</small>
                         </div>
                     </div>
 
@@ -593,6 +629,7 @@ class GemAstroAdmin
                 setInterval(refreshStats, 30000);
             })();
         </script>
+        <?php echo $this->get_logo_picker_script(); ?>
         <?php
     }
 
@@ -713,6 +750,24 @@ class GemAstroAdmin
                             placeholder="support@example.com" class="ga-input ga-input-mono">
                     </div>
 
+                    <div class="ga-form-group">
+                        <label for="gem_astro_cover_logo">Cover Logo (Top + Side)</label>
+                        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                            <input type="text" id="gem_astro_cover_logo" name="gem_astro_cover_logo"
+                                value="<?php echo esc_attr(get_option('gem_astro_cover_logo', '')); ?>"
+                                placeholder="https://example.com/logo.png" class="ga-input ga-input-mono ga-logo-url"
+                                style="flex:1;min-width:280px;">
+                            <button type="button" class="ga-btn ga-btn-ghost ga-logo-picker">Select Logo</button>
+                        </div>
+                    </div>
+
+                    <div class="ga-form-group">
+                        <label for="gem_astro_cover_welcome_text">Cover Welcome Text</label>
+                        <textarea id="gem_astro_cover_welcome_text" name="gem_astro_cover_welcome_text" rows="4"
+                            class="ga-input"><?php echo esc_textarea(get_option('gem_astro_cover_welcome_text', "Welcome To\nYour GEM\nASTROLOGY\nReport")); ?></textarea>
+                        <small class="ga-help">Yeh text cover page par "Welcome To Your GEM ASTROLOGY Report" ki jagah show hoga.</small>
+                    </div>
+
                     <button type="submit" class="ga-btn ga-btn-primary ga-btn-lg">💾 Save Settings</button>
                 </form>
             </div>
@@ -778,7 +833,47 @@ class GemAstroAdmin
                 </div>
             </div>
         </div>
+        <?php echo $this->get_logo_picker_script(); ?>
         <?php
+    }
+
+    private function get_logo_picker_script()
+    {
+        return '<script>
+            (function(){
+                if (typeof wp === "undefined" || !wp.media) return;
+                function bindPicker(btn){
+                    btn.addEventListener("click", function(){
+                        var wrap = btn.closest("div");
+                        if (!wrap) return;
+                        var input = wrap.querySelector(".ga-logo-url");
+                        if (!input) return;
+
+                        var frame = wp.media({
+                            title: "Select PDF Cover Logo",
+                            button: { text: "Use this logo" },
+                            library: { type: "image" },
+                            multiple: false
+                        });
+
+                        frame.on("select", function(){
+                            var attachment = frame.state().get("selection").first().toJSON();
+                            if (attachment && attachment.url) {
+                                input.value = attachment.url;
+                                input.dispatchEvent(new Event("change"));
+                            }
+                        });
+
+                        frame.open();
+                    });
+                }
+
+                var buttons = document.querySelectorAll(".ga-logo-picker");
+                for (var i = 0; i < buttons.length; i++) {
+                    bindPicker(buttons[i]);
+                }
+            })();
+        </script>';
     }
 
     /**
