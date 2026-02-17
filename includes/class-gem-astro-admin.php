@@ -840,39 +840,47 @@ class GemAstroAdmin
     private function get_logo_picker_script()
     {
         return '<script>
-            (function(){
-                if (typeof wp === "undefined" || !wp.media) return;
-                function bindPicker(btn){
-                    btn.addEventListener("click", function(){
-                        var wrap = btn.closest("div");
-                        if (!wrap) return;
-                        var input = wrap.querySelector(".ga-logo-url");
-                        if (!input) return;
+            jQuery(document).ready(function($){
+                var file_frame;
 
-                        var frame = wp.media({
-                            title: "Select PDF Cover Logo",
-                            button: { text: "Use this logo" },
-                            library: { type: "image" },
-                            multiple: false
-                        });
+                $(".ga-logo-picker").on("click", function(event){
+                    event.preventDefault();
+                    var button = $(this);
+                    var wrapper = button.closest("div");
+                    var input_field = wrapper.find(".ga-logo-url");
 
-                        frame.on("select", function(){
-                            var attachment = frame.state().get("selection").first().toJSON();
-                            if (attachment && attachment.url) {
-                                input.value = attachment.url;
-                                input.dispatchEvent(new Event("change"));
-                            }
-                        });
+                    // If the media frame already exists, reopen it.
+                    if ( file_frame ) {
+                        // Open frame
+                        file_frame.open();
+                        return;
+                    }
 
-                        frame.open();
+                    // Create the media frame.
+                    file_frame = wp.media.frames.file_frame = wp.media({
+                        title: "Select PDF Cover Logo",
+                        button: {
+                            text: "Use this logo"
+                        },
+                        multiple: false  // Set to true to allow multiple files to be selected
                     });
-                }
 
-                var buttons = document.querySelectorAll(".ga-logo-picker");
-                for (var i = 0; i < buttons.length; i++) {
-                    bindPicker(buttons[i]);
-                }
-            })();
+                    // When an image is selected, run a callback.
+                    file_frame.on( "select", function() {
+                        // We set multiple to false so only get one image from the uploader
+                        attachment = file_frame.state().get("selection").first().toJSON();
+
+                        // Do something with attachment.id and/or attachment.url here
+                        if (attachment && attachment.url) {
+                            input_field.val(attachment.url);
+                            input_field.trigger("change"); // Trigger change for any listeners
+                        }
+                    });
+
+                    // Finally, open the modal
+                    file_frame.open();
+                });
+            });
         </script>';
     }
 
