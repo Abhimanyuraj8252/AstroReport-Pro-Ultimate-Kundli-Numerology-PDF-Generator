@@ -628,17 +628,16 @@ if (!defined('ABSPATH')) {
         }
 
         function fetchAndDisplayReport(userData) {
-            // Fetch report data via AJAX
-            const data = new URLSearchParams();
-            data.append('action', 'gem_astro_get_report');
-            data.append('nonce', GEM_NONCE);
-            data.append('name', userData.name);
-            data.append('dob', userData.dob);
-            data.append('email', userData.email);
-            data.append('language', userData.language);
-
-            fetch(GEM_AJAX_URL, { method: 'POST', body: data })
-                .then(r => r.json())
+            gemPostWithNonceRetry(() => {
+                const data = new URLSearchParams();
+                data.append('action', 'gem_astro_get_report');
+                data.append('nonce', GEM_NONCE);
+                data.append('name', userData.name);
+                data.append('dob', userData.dob);
+                data.append('email', userData.email);
+                data.append('language', userData.language);
+                return data;
+            })
                 .then(res => {
                     if (res.success && res.data.html) {
                         showReportUI(res.data.html, userData);
