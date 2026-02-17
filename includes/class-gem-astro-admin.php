@@ -61,6 +61,12 @@ class GemAstroAdmin
     {
         register_setting('gem_astro_settings', 'gem_astro_razorpay_key');
         register_setting('gem_astro_settings', 'gem_astro_razorpay_secret');
+        register_setting('gem_astro_settings', 'gem_astro_brand_title');
+        register_setting('gem_astro_settings', 'gem_astro_brand_tagline');
+        register_setting('gem_astro_settings', 'gem_astro_website_name');
+        register_setting('gem_astro_settings', 'gem_astro_website_url');
+        register_setting('gem_astro_settings', 'gem_astro_contact_phone');
+        register_setting('gem_astro_settings', 'gem_astro_contact_email');
     }
 
     /**
@@ -139,6 +145,12 @@ class GemAstroAdmin
         $bookings = GemAstroDB::get_all_bookings($filters);
 
         $razorpay_key = get_option('gem_astro_razorpay_key', '');
+        $brand_title = get_option('gem_astro_brand_title', 'Trikrypta');
+        $brand_tagline = get_option('gem_astro_brand_tagline', 'Let\'s bring you the new life');
+        $website_name = get_option('gem_astro_website_name', 'Trikrypta');
+        $website_url = get_option('gem_astro_website_url', 'https://abhimanyu-raj-cse.vercel.app/');
+        $contact_phone = get_option('gem_astro_contact_phone', '+91 9801834437');
+        $contact_email = get_option('gem_astro_contact_email', 'novanexusltd001@gmail.com');
         $rzp_mode = '';
         if (empty($razorpay_key)) {
             $rzp_mode = 'not_set';
@@ -218,6 +230,58 @@ class GemAstroAdmin
                         class="ga-btn ga-banner-btn ga-btn-outline">Manage Keys</a>
                 </div>
             <?php endif; ?>
+
+            <!-- Quick Edit (Home Dashboard) -->
+            <div class="ga-card">
+                <div class="ga-card-header">
+                    <h3>✏️ Quick Edit - PDF Branding & Contact</h3>
+                </div>
+                <p class="ga-desc">Yahin se first & last PDF page ka title, website, phone aur email update karo.</p>
+
+                <form method="post" action="options.php">
+                    <?php settings_fields('gem_astro_settings'); ?>
+
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+                        <div class="ga-form-group">
+                            <label for="ga_home_brand_title">Brand Title</label>
+                            <input type="text" id="ga_home_brand_title" name="gem_astro_brand_title"
+                                value="<?php echo esc_attr($brand_title); ?>" class="ga-input">
+                        </div>
+
+                        <div class="ga-form-group">
+                            <label for="ga_home_brand_tagline">Tagline</label>
+                            <input type="text" id="ga_home_brand_tagline" name="gem_astro_brand_tagline"
+                                value="<?php echo esc_attr($brand_tagline); ?>" class="ga-input">
+                        </div>
+
+                        <div class="ga-form-group">
+                            <label for="ga_home_website_name">Website Name</label>
+                            <input type="text" id="ga_home_website_name" name="gem_astro_website_name"
+                                value="<?php echo esc_attr($website_name); ?>" class="ga-input">
+                        </div>
+
+                        <div class="ga-form-group">
+                            <label for="ga_home_website_url">Website URL</label>
+                            <input type="text" id="ga_home_website_url" name="gem_astro_website_url"
+                                value="<?php echo esc_attr($website_url); ?>" class="ga-input ga-input-mono">
+                        </div>
+
+                        <div class="ga-form-group">
+                            <label for="ga_home_phone">Phone</label>
+                            <input type="text" id="ga_home_phone" name="gem_astro_contact_phone"
+                                value="<?php echo esc_attr($contact_phone); ?>" class="ga-input ga-input-mono">
+                        </div>
+
+                        <div class="ga-form-group">
+                            <label for="ga_home_email">Email</label>
+                            <input type="text" id="ga_home_email" name="gem_astro_contact_email"
+                                value="<?php echo esc_attr($contact_email); ?>" class="ga-input ga-input-mono">
+                        </div>
+                    </div>
+
+                    <button type="submit" class="ga-btn ga-btn-primary" style="margin-top:8px;">💾 Save Home Settings</button>
+                </form>
+            </div>
 
             <!-- Stats Grid -->
             <div class="ga-stats-grid" id="ga-stats-grid">
@@ -602,6 +666,51 @@ class GemAstroAdmin
                             value="<?php echo esc_attr(get_option('gem_astro_razorpay_secret', '')); ?>"
                             placeholder="Enter Secret Key..." class="ga-input ga-input-mono">
                         <small class="ga-help">⚠️ Never share this key publicly</small>
+                    </div>
+
+                    <hr style="border-color:rgba(255,255,255,0.08);margin:18px 0;">
+                    <h4 style="margin:0 0 12px 0;color:#fff;">🪪 PDF Brand & Contact (Cover + Last Page)</h4>
+
+                    <div class="ga-form-group">
+                        <label for="gem_astro_brand_title">Brand Title</label>
+                        <input type="text" id="gem_astro_brand_title" name="gem_astro_brand_title"
+                            value="<?php echo esc_attr(get_option('gem_astro_brand_title', 'Trikrypta')); ?>"
+                            placeholder="Trikrypta" class="ga-input">
+                    </div>
+
+                    <div class="ga-form-group">
+                        <label for="gem_astro_brand_tagline">Tagline</label>
+                        <input type="text" id="gem_astro_brand_tagline" name="gem_astro_brand_tagline"
+                            value="<?php echo esc_attr(get_option('gem_astro_brand_tagline', 'Let\'s bring you the new life')); ?>"
+                            placeholder="Let's bring you the new life" class="ga-input">
+                    </div>
+
+                    <div class="ga-form-group">
+                        <label for="gem_astro_website_name">Website Name</label>
+                        <input type="text" id="gem_astro_website_name" name="gem_astro_website_name"
+                            value="<?php echo esc_attr(get_option('gem_astro_website_name', 'Trikrypta')); ?>"
+                            placeholder="Trikrypta" class="ga-input">
+                    </div>
+
+                    <div class="ga-form-group">
+                        <label for="gem_astro_website_url">Website URL</label>
+                        <input type="text" id="gem_astro_website_url" name="gem_astro_website_url"
+                            value="<?php echo esc_attr(get_option('gem_astro_website_url', 'https://abhimanyu-raj-cse.vercel.app/')); ?>"
+                            placeholder="https://example.com" class="ga-input ga-input-mono">
+                    </div>
+
+                    <div class="ga-form-group">
+                        <label for="gem_astro_contact_phone">Phone</label>
+                        <input type="text" id="gem_astro_contact_phone" name="gem_astro_contact_phone"
+                            value="<?php echo esc_attr(get_option('gem_astro_contact_phone', '+91 9801834437')); ?>"
+                            placeholder="+91 9801834437" class="ga-input ga-input-mono">
+                    </div>
+
+                    <div class="ga-form-group">
+                        <label for="gem_astro_contact_email">Email</label>
+                        <input type="text" id="gem_astro_contact_email" name="gem_astro_contact_email"
+                            value="<?php echo esc_attr(get_option('gem_astro_contact_email', 'novanexusltd001@gmail.com')); ?>"
+                            placeholder="support@example.com" class="ga-input ga-input-mono">
                     </div>
 
                     <button type="submit" class="ga-btn ga-btn-primary ga-btn-lg">💾 Save Settings</button>
