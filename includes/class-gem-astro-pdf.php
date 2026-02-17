@@ -77,19 +77,24 @@ class GemAstroPDF
         $seed = crc32($name . $dob);
         srand($seed);
 
-        self::renderCoverPage($pdf, $name, $brand);
+        try {
+            self::renderCoverPage($pdf, $name, $brand);
 
-        $total = count($sections);
-        $chunks = array_chunk($sections, 4);
-        $processed = 0;
+            $total = count($sections);
+            $chunks = array_chunk($sections, 4);
+            $processed = 0;
 
-        foreach ($chunks as $chunk) {
-            $processed += count($chunk);
-            $isLast = ($processed >= $total);
-            self::renderContentPage($pdf, $mulank, $chunk, $isLast, $brand, $langCode);
+            foreach ($chunks as $chunk) {
+                $processed += count($chunk);
+                $isLast = ($processed >= $total);
+                self::renderContentPage($pdf, $mulank, $chunk, $isLast, $brand, $langCode);
+            }
+
+            self::renderFinalNotePage($pdf, $brand);
+        } catch (Throwable $e) {
+            error_log('GemAstroPDF premium renderer failed: ' . $e->getMessage());
+            self::renderFallbackReport($pdf, $name, $mulank, $sections, $brand, $langCode);
         }
-
-        self::renderFinalNotePage($pdf, $brand);
 
         $upload_dir = wp_upload_dir();
         $gem_astro_dir = $upload_dir['basedir'] . '/gem-astrology-reports/';
@@ -214,19 +219,22 @@ class GemAstroPDF
 
     private static function getMulankLabel($langCode)
     {
-        if ($langCode === 'gu') {
-            return 'મૂલાંક';
-        }
-        if ($langCode === 'hi') {
-            return 'मूलांक';
-        }
         return 'Mulank';
     }
 
     private static function normalizeContentForLanguage($content, $langCode)
     {
         if ($langCode === 'gu') {
-            $content = str_replace(['•', '●', '▪', '◦'], '-', $content);
+            $content = str_replace(['•', '●', '▪', '◦', '▫', '■', '□', '◆', '◇', '○', '◉', '', '', '▪️'], '-', $content);
+
+            $lines = preg_split('/\R/u', $content);
+            if (is_array($lines)) {
+                foreach ($lines as &$line) {
+                    $line = preg_replace('/^\s*[\p{P}\p{S}]+\s*/u', '- ', (string) $line);
+                }
+                unset($line);
+                $content = implode("\n", $lines);
+            }
         }
         return $content;
     }
@@ -385,7 +393,8 @@ class GemAstroPDF
         $pdf->Rect(0, 0, 210, 297, 'F');
 
         $pdf->SetTextColor(0, 0, 0);
-        self::setLangFont($pdf, $langCode, 17, true, false);
+        // Keep Mulank title in Latin-safe font to avoid box glyphs on some Gujarati TTFs
+        $pdf->SetFont('freesans', 'B', 17);
         $pdf->SetXY(14, 16);
         $pdf->Cell(182, 10, self::getMulankLabel($langCode) . ': ' . $mulank, 0, 1, 'L');
 
@@ -555,6 +564,42 @@ class GemAstroPDF
         $pdf->SetFillColor(32, 99, 170);
         if (method_exists($pdf, 'Circle')) {
             $pdf->Circle(120, 274, 22, 0, 360, 'F');
+        }
+    }
+
+    private static function renderFallbackReport($pdf, $name, $mulank, $sections, $brand, $langCode)
+    {
+        $pdf->resetColumns();
+        $pdf->setPrintHeader(false);
+        $pdf->setPrintFooter(false);
+        $pdf->SetMargins(12, 12, 12);
+        $pdf->SetAutoPageBreak(true, 12);
+
+        $pdf->AddPage();
+        self::setLangFont($pdf, $langCode, 20, true, false);
+        $pdf->Cell(0, 12, 'Kundli Report - ' . $name, 0, 1, 'L');
+        self::setLangFont($pdf, $langCode, 12, false, false);
+        $pdf->Ln(3);
+        $pdf->MultiCell(0, 7, 'Prepared by: ' . (string) ($brand['website_name'] ?? 'Trikrypta')); 
+        $pdf->MultiCell(0, 7, 'Website: ' . (string) ($brand['website_url'] ?? ''));
+        $pdf->MultiCell(0, 7, 'Phone: ' . (string) ($brand['phone'] ?? ''));
+        $pdf->MultiCell(0, 7, 'Email: ' . (string) ($brand['email'] ?? ''));
+        $pdf->Ln(4);
+        self::setLangFont($pdf, $langCode, 14, true, false);
+        $pdf->Cell(0, 10, self::getMulankLabel($langCode) . ': ' . $mulank, 0, 1, 'L');
+
+        foreach ($sections as $section) {
+            $heading = isset($section['heading']) ? (string) $section['heading'] : 'Section';
+            $contentRaw = $section['content'] ?? '';
+            $content = self::pickSectionContent($contentRaw);
+            $content = str_replace('\\n', "\n", $content);
+            $content = self::normalizeContentForLanguage($content, $langCode);
+
+            self::setLangFont($pdf, $langCode, 12.5, true, false);
+            $pdf->MultiCell(0, 8, $heading, 0, 'L');
+            self::setLangFont($pdf, $langCode, 10.5, false, false);
+            $pdf->MultiCell(0, 6, $content, 0, 'L');
+            $pdf->Ln(3);
         }
     }
 }
