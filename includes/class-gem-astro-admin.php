@@ -62,6 +62,7 @@ class GemAstroAdmin
     {
         register_setting('gem_astro_settings', 'gem_astro_razorpay_key');
         register_setting('gem_astro_settings', 'gem_astro_razorpay_secret');
+        register_setting('gem_astro_settings', 'gem_astro_pdf_price');
         register_setting('gem_astro_settings', 'gem_astro_brand_title');
         register_setting('gem_astro_settings', 'gem_astro_brand_tagline');
         register_setting('gem_astro_settings', 'gem_astro_website_name');
@@ -311,7 +312,8 @@ class GemAstroAdmin
                             <label for="ga_home_cover_welcome_text">Cover Welcome Text</label>
                             <textarea id="ga_home_cover_welcome_text" name="gem_astro_cover_welcome_text" rows="4"
                                 class="ga-input"><?php echo esc_textarea($cover_welcome_text); ?></textarea>
-                            <small class="ga-help">Yeh text cover page par "Welcome To Your GEM ASTROLOGY Report" ki jagah show hoga.</small>
+                            <small class="ga-help">Yeh text cover page par "Welcome To Your GEM ASTROLOGY Report" ki jagah show
+                                hoga.</small>
                         </div>
                     </div>
 
@@ -630,7 +632,7 @@ class GemAstroAdmin
             })();
         </script>
         <?php echo $this->get_logo_picker_script(); ?>
-        <?php
+    <?php
     }
 
     /**
@@ -705,6 +707,14 @@ class GemAstroAdmin
                         <small class="ga-help">⚠️ Never share this key publicly</small>
                     </div>
 
+                    <div class="ga-form-group">
+                        <label for="gem_astro_pdf_price">PDF Report Price (₹)</label>
+                        <input type="number" id="gem_astro_pdf_price" name="gem_astro_pdf_price"
+                            value="<?php echo esc_attr(get_option('gem_astro_pdf_price', '1')); ?>" min="1" step="1"
+                            class="ga-input ga-input-mono">
+                        <small class="ga-help">Amount to charge for the PDF report.</small>
+                    </div>
+
                     <hr style="border-color:rgba(255,255,255,0.08);margin:18px 0;">
                     <h4 style="margin:0 0 12px 0;color:#fff;">🪪 PDF Brand & Contact (Cover + Last Page)</h4>
 
@@ -765,7 +775,8 @@ class GemAstroAdmin
                         <label for="gem_astro_cover_welcome_text">Cover Welcome Text</label>
                         <textarea id="gem_astro_cover_welcome_text" name="gem_astro_cover_welcome_text" rows="4"
                             class="ga-input"><?php echo esc_textarea(get_option('gem_astro_cover_welcome_text', "Welcome To\nYour GEM\nASTROLOGY\nReport")); ?></textarea>
-                        <small class="ga-help">Yeh text cover page par "Welcome To Your GEM ASTROLOGY Report" ki jagah show hoga.</small>
+                        <small class="ga-help">Yeh text cover page par "Welcome To Your GEM ASTROLOGY Report" ki jagah show
+                            hoga.</small>
                     </div>
 
                     <button type="submit" class="ga-btn ga-btn-primary ga-btn-lg">💾 Save Settings</button>
@@ -834,7 +845,7 @@ class GemAstroAdmin
             </div>
         </div>
         <?php echo $this->get_logo_picker_script(); ?>
-        <?php
+    <?php
     }
 
     private function get_logo_picker_script()

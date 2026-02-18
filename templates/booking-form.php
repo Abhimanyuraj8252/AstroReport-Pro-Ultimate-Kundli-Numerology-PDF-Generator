@@ -21,6 +21,10 @@ if (!defined('ABSPATH')) {
 // getHindiData(), getEnglishData(), getGujaratiData() are available globally
 ?>
 
+// Get configured price
+$price = get_option('gem_astro_pdf_price', 1);
+?>
+
 <!-- Google Fonts -->
 <link
     href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&family=Playfair+Display:wght@700&family=Noto+Sans+Devanagari:wght@400;700&family=Noto+Sans+Gujarati:wght@400;700&display=swap"
@@ -429,7 +433,7 @@ if (!defined('ABSPATH')) {
                 </div>
 
                 <button type="button" class="gem-pay-btn" id="gemPayBtn" onclick="gemStartPayment()">
-                    Get Instant Report & Pay ₹1
+                    Get Instant Report & Pay ₹<?php echo esc_html($price); ?>
                 </button>
             </form>
         </div>
@@ -461,6 +465,7 @@ if (!defined('ABSPATH')) {
         let GEM_AJAX_URL = typeof NION_BOOKING !== 'undefined' ? NION_BOOKING.ajax_url : '<?php echo admin_url("admin-ajax.php"); ?>';
         let GEM_NONCE = typeof NION_BOOKING !== 'undefined' ? NION_BOOKING.nonce : '<?php echo wp_create_nonce("gem_astro_nonce"); ?>';
         let GEM_RZP_KEY = typeof NION_BOOKING !== 'undefined' ? NION_BOOKING.razorpay_key : '<?php echo esc_attr(get_option("gem_astro_razorpay_key", "")); ?>';
+        let GEM_PRICE = <?php echo floatval($price); ?>;
 
         async function gemEnsureConfig(forceRefresh = false) {
             if (!forceRefresh && GEM_AJAX_URL && GEM_NONCE && GEM_RZP_KEY) return true;
@@ -476,7 +481,7 @@ if (!defined('ABSPATH')) {
                     GEM_RZP_KEY = json.data.razorpay_key || GEM_RZP_KEY;
                     return !!(GEM_AJAX_URL && GEM_NONCE && GEM_RZP_KEY);
                 }
-            } catch (e) {}
+            } catch (e) { }
             return false;
         }
 
@@ -545,7 +550,7 @@ if (!defined('ABSPATH')) {
                     const orderData = new URLSearchParams();
                     orderData.append('action', 'nion_create_rzp_order');
                     orderData.append('nonce', GEM_NONCE);
-                    orderData.append('amount', 1);
+                    orderData.append('amount', GEM_PRICE);
                     orderData.append('service', 'Kundali report PDF');
                     orderData.append('booking_type', 'pdf');
                     return orderData;
@@ -566,7 +571,7 @@ if (!defined('ABSPATH')) {
         function openRazorpay(orderId, userData) {
             const options = {
                 key: GEM_RZP_KEY,
-                amount: 100, // 1 rupee = 100 paise
+                amount: GEM_PRICE * 100, // Amount in paise
                 currency: "INR",
                 name: "AstroReport Pro",
                 description: "Personalized Digital Kundli Report",
@@ -603,28 +608,28 @@ if (!defined('ABSPATH')) {
                 data.append('email', userData.email);
                 data.append('dob', userData.dob);
                 data.append('booking_type', 'pdf');
-                data.append('price', 1);
+                data.append('price', GEM_PRICE);
                 data.append('language', userData.language);
                 data.append('notes', '');
                 data.append('date', '');
                 data.append('time', '');
                 return data;
             })
-            .then(res => {
-                if (res && res.success) {
-                    if (res.data && res.data.pdf_url) {
-                        gemAutoDownloadPdf(res.data.pdf_url, userData.name);
+                .then(res => {
+                    if (res && res.success) {
+                        if (res.data && res.data.pdf_url) {
+                            gemAutoDownloadPdf(res.data.pdf_url, userData.name);
+                        }
+                        fetchAndDisplayReport(userData);
+                    } else {
+                        showError('Payment verification failed: ' + (res?.data?.message || ''));
+                        resetBtn();
                     }
-                    fetchAndDisplayReport(userData);
-                } else {
-                    showError('Payment verification failed: ' + (res?.data?.message || ''));
+                })
+                .catch(err => {
+                    showError(err && err.message ? err.message : 'Verification error. Contact support.');
                     resetBtn();
-                }
-            })
-            .catch(err => {
-                showError(err && err.message ? err.message : 'Verification error. Contact support.');
-                resetBtn();
-            });
+                });
         }
 
         function fetchAndDisplayReport(userData) {
@@ -662,8 +667,8 @@ if (!defined('ABSPATH')) {
 
             document.getElementById('gemStatusMsg').innerHTML = '✅ Report generated! Your PDF is downloading...';
 
-            // Auto download PDF
-            setTimeout(() => gemDownloadPDF(userData.name), 500);
+            // Do NOT double download. The PDF is already downloaded via gemAutoDownloadPdf
+            // setTimeout(() => gemDownloadPDF(userData.name), 500);
         }
 
         window.gemDownloadPDF = function (name) {
@@ -705,7 +710,8 @@ if (!defined('ABSPATH')) {
             const btn = document.getElementById('gemPayBtn');
             if (btn) {
                 btn.disabled = false;
-                btn.textContent = 'Get Instant Report & Pay ₹1';
+                const priceDisp = GEM_PRICE || '1';
+                btn.textContent = 'Get Instant Report & Pay ₹' + priceDisp;
             }
         }
     })();

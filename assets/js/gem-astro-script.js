@@ -7,7 +7,8 @@
 const GEM_ASTRO_CONFIG = {
     ajaxUrl: (window.NION_BOOKING && NION_BOOKING.ajax_url) ? NION_BOOKING.ajax_url : '/wp-admin/admin-ajax.php',
     nonce: (window.NION_BOOKING && NION_BOOKING.nonce) ? NION_BOOKING.nonce : '',
-    razorpayKey: (window.NION_BOOKING && NION_BOOKING.razorpay_key) ? NION_BOOKING.razorpay_key : ''
+    razorpayKey: (window.NION_BOOKING && NION_BOOKING.razorpay_key) ? NION_BOOKING.razorpay_key : '',
+    pdfPrice: (window.NION_BOOKING && NION_BOOKING.pdf_price) ? Number(NION_BOOKING.pdf_price) : 0
 };
 
 async function ensureGemConfig(forceRefresh = false) {
@@ -25,6 +26,7 @@ async function ensureGemConfig(forceRefresh = false) {
             GEM_ASTRO_CONFIG.ajaxUrl = json.data.ajax_url || GEM_ASTRO_CONFIG.ajaxUrl;
             GEM_ASTRO_CONFIG.nonce = json.data.nonce || GEM_ASTRO_CONFIG.nonce;
             GEM_ASTRO_CONFIG.razorpayKey = json.data.razorpay_key || GEM_ASTRO_CONFIG.razorpayKey;
+            GEM_ASTRO_CONFIG.pdfPrice = (json.data.pdf_price) ? Number(json.data.pdf_price) : GEM_ASTRO_CONFIG.pdfPrice;
             return !!(GEM_ASTRO_CONFIG.ajaxUrl && GEM_ASTRO_CONFIG.nonce && GEM_ASTRO_CONFIG.razorpayKey);
         }
     } catch (error) {
@@ -76,6 +78,12 @@ window.openGemAstroBooking = async function (type, price, title) {
     if (!type) {
         alert("Please specify a service type (e.g., 'pdf').");
         return;
+    }
+
+
+    // Use configured price for PDF if available
+    if (type === 'pdf' && GEM_ASTRO_CONFIG.pdfPrice > 0) {
+        price = GEM_ASTRO_CONFIG.pdfPrice;
     }
 
     const name = document.getElementById('name')?.value || document.getElementById('form-field-name')?.value;

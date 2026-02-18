@@ -72,10 +72,11 @@ class GemAstrologyPlugin
         wp_enqueue_script('gem-astro-script', GEM_ASTRO_URL . 'assets/js/gem-astro-script.js', ['jquery', 'razorpay-checkout'], GEM_ASTRO_VERSION, true);
 
         // Pass PHP variables to JS
-        wp_localize_script('razorpay-checkout', 'NION_BOOKING', [
+        wp_localize_script('gem-astro-script', 'NION_BOOKING', [
             'ajax_url' => admin_url('admin-ajax.php'),
             'nonce' => wp_create_nonce('gem_astro_nonce'),
-            'razorpay_key' => get_option('gem_astro_razorpay_key', 'rzp_test_YOUR_KEY_HERE') // Default or from options
+            'razorpay_key' => get_option('gem_astro_razorpay_key', ''),
+            'pdf_price' => get_option('gem_astro_pdf_price', 1)
         ]);
     }
 
@@ -93,7 +94,8 @@ class GemAstrologyPlugin
         $config = [
             'ajax_url' => admin_url('admin-ajax.php'),
             'nonce' => wp_create_nonce('gem_astro_nonce'),
-            'razorpay_key' => get_option('gem_astro_razorpay_key', 'rzp_test_YOUR_KEY_HERE')
+            'razorpay_key' => get_option('gem_astro_razorpay_key', 'rzp_test_YOUR_KEY_HERE'),
+            'pdf_price' => get_option('gem_astro_pdf_price', 1)
         ];
         wp_send_json_success($config);
     }
@@ -102,7 +104,14 @@ class GemAstrologyPlugin
     {
         check_ajax_referer('gem_astro_nonce', 'nonce');
 
+        $price = get_option('gem_astro_pdf_price', 1);
         $amount = floatval($_POST['amount']);
+
+        // Validate amount matches server config (optional but good security)
+        if ($amount != $price) {
+            $amount = $price;
+        }
+
         $service = sanitize_text_field($_POST['service']);
 
         if ($amount <= 0) {
@@ -154,10 +163,9 @@ class GemAstrologyPlugin
         // Verify Signature
         $generated_signature = hash_hmac('sha256', $rzp_order_id . "|" . $rzp_payment_id, $key_secret);
 
-        // Use a less strict check if key is not set or for testing
-        // if ($generated_signature !== $rzp_signature) {
-        //     wp_send_json_error(['message' => 'Payment verification failed']);
-        // }
+        if ($generated_signature !== $rzp_signature) {
+            wp_send_json_error(['message' => 'Payment verification failed']);
+        }
 
         $selected_language = sanitize_text_field($_POST['language'] ?? 'hi');
         $language_map = [

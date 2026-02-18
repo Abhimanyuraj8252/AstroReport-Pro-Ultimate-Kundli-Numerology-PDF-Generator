@@ -1,0 +1,6 @@
+{
+    "name": "gem-astro/includes-deps",
+    "require": {
+        "mpdf/mpdf": "^8.2"
+    }
+}

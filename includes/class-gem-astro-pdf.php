@@ -1,22 +1,13 @@
 <?php
 
 if (!defined('ABSPATH') && !defined('GEM_ASTRO_PATH')) {
-    // Allow standalone if we defined GEM_ASTRO_PATH manually
     if (!defined('GEM_ASTRO_PATH'))
         exit;
 }
 
-// Try to load TCPDF
-// Logic to find TCPDF. If not in includes/tcpdf, we might need to look elsewhere or use a different library.
-// For now, assuming it is there as per file listing.
-$tcpdf_path = GEM_ASTRO_PATH . 'includes/tcpdf/tcpdf.php';
-if (file_exists($tcpdf_path)) {
-    require_once $tcpdf_path;
-} else {
-    // If standard TCPDF file isn't found, check if it's inside another folder or check system
-    // For this environment, we might need to mock or ensure it exists.
-    // If we can't load TCPDF, we can't generate PDF.
-    // We will assume it exists for now based on 'ls' output showing the dir.
+// Load mPDF from local vendor
+if (file_exists(GEM_ASTRO_PATH . 'includes/vendor/autoload.php')) {
+    require_once GEM_ASTRO_PATH . 'includes/vendor/autoload.php';
 }
 
 class GemAstroPDF
@@ -43,8 +34,9 @@ class GemAstroPDF
 
     public static function generate_report($booking_data)
     {
-        if (!class_exists('TCPDF')) {
-            error_log('TCPDF class not found.');
+        // Ensure mPDF class exists
+        if (!class_exists('\Mpdf\Mpdf')) {
+            error_log('mPDF class not found. Please run composer install in includes directory.');
             return false;
         }
 
@@ -60,83 +52,440 @@ class GemAstroPDF
 
         if (empty($sections)) {
             error_log('No data available for Mulank ' . $mulank . ' in language: ' . $langCode);
-            return false;
         }
-
-        $pdf = new TCPDF(PDF_PAGE_ORIENTATION, PDF_UNIT, PDF_PAGE_FORMAT, true, 'UTF-8', false);
-        $pdf->SetCreator('Gem Astrology');
-        $pdf->SetAuthor('Gem Astrology');
-        $pdf->SetTitle('Kundli Report - ' . $name);
-        $pdf->setPrintHeader(false);
-        $pdf->setPrintFooter(false);
-        $pdf->SetMargins(0, 0, 0);
-        $pdf->SetAutoPageBreak(FALSE, 0);
-        $pdf->SetFont('freesans', '', 12);
-        $pdf->setImageScale(PDF_IMAGE_SCALE_RATIO);
-
-        $seed = crc32($name . $dob);
-        srand($seed);
 
         try {
-            self::renderCoverPage($pdf, $name, $brand);
+            // Initialize mPDF
+            $mpdf = new \Mpdf\Mpdf([
+                'mode' => 'utf-8',
+                'format' => 'A4',
+                'margin_left' => 0,
+                'margin_right' => 0,
+                'margin_top' => 0,
+                'margin_bottom' => 0,
+                'margin_header' => 0,
+                'margin_footer' => 0,
+                'orientation' => 'P'
+            ]);
 
-            $total = count($sections);
-            $chunks = array_chunk($sections, 4);
-            $processed = 0;
+            $mpdf->SetTitle('Kundli Report - ' . $name);
+            $mpdf->SetAuthor('Gem Astrology');
+            $mpdf->SetCreator('Gem Astrology');
 
-            foreach ($chunks as $index => $chunk) {
-                $processed += count($chunk);
-                $isLast = ($processed >= $total);
-                $showMulankOnThisPage = ($index === 0);
-                self::renderContentPage($pdf, $mulank, $chunk, $isLast, $showMulankOnThisPage, $brand, $langCode);
+            // Render Cover Page
+            self::renderCoverPage($mpdf, $name, $brand);
+
+            // Render Content Pages (Continuous Flow)
+            if (count($sections) > 0) {
+                self::renderContentPage($mpdf, $mulank, $sections, $brand, $langCode);
             }
 
-            self::renderFinalNotePage($pdf, $brand);
-        } catch (Throwable $e) {
-            error_log('GemAstroPDF premium renderer failed: ' . $e->getMessage());
-            self::renderFallbackReport($pdf, $name, $mulank, $sections, $brand, $langCode);
+            // Render Final Note Page
+            self::renderFinalNotePage($mpdf, $brand);
+
+            // Output
+            $upload_dir = wp_upload_dir();
+            $gem_astro_dir = $upload_dir['basedir'] . '/gem-astrology-reports/';
+            if (!file_exists($gem_astro_dir)) {
+                wp_mkdir_p($gem_astro_dir);
+            }
+
+            $filename = 'GemAstro-Report-' . sanitize_file_name($name) . '-' . strtoupper($langCode) . '-' . time() . '.pdf';
+            $file_path = $gem_astro_dir . $filename;
+
+            $mpdf->Output($file_path, 'F');
+
+            $file_url = str_replace(
+                [$upload_dir['basedir'], '\\'],
+                [$upload_dir['baseurl'], '/'],
+                $file_path
+            );
+
+            return ['path' => $file_path, 'url' => $file_url];
+
+        } catch (\Throwable $e) {
+            error_log('GemAstroPDF mPDF generation failed: ' . $e->getMessage());
+            return false;
         }
+    }
 
-        $upload_dir = wp_upload_dir();
-        $gem_astro_dir = $upload_dir['basedir'] . '/gem-astrology-reports/';
-        if (!file_exists($gem_astro_dir)) {
-            wp_mkdir_p($gem_astro_dir);
-        }
+    private static function renderCoverPage($mpdf, $name, $brand)
+    {
+        $mpdf->AddPage();
 
-        $filename = 'GemAstro-Report-' . sanitize_file_name($name) . '-' . strtoupper($langCode) . '-' . time() . '.pdf';
-        $file_path = $gem_astro_dir . $filename;
+        // Colors
+        $bgCream = '#FEF0D5';
+        $cOrange = '#F25C2A';
+        $cNavy = '#1C2E40';
+        $cGold = '#F5B436';
+        $cBlue = '#2063AA';
+        $cDkBlue = '#142845';
+        $cTtBlue = '#183282';
+        $cTxDark = '#333333';
+        $cGrOr = '#F05A28';
 
-        $pdf->Output($file_path, 'F');
-
-        $file_url = str_replace(
-            [$upload_dir['basedir'], '\\'],
-            [$upload_dir['baseurl'], '/'],
-            $file_path
+        // Full-page cream background
+        $mpdf->WriteFixedPosHTML(
+            '<div style="background:' . $bgCream . ';width:100%;height:100%"></div>',
+            0,
+            0,
+            210,
+            297,
+            'hidden'
         );
 
-        return ['path' => $file_path, 'url' => $file_url];
+        // ===== GEOMETRIC SHAPES: Top-Left Group =====
+        $mpdf->WriteFixedPosHTML('<div style="background:' . $cOrange . ';width:55mm;height:55mm;"></div>', 0, 95, 55, 55, 'hidden');
+        $mpdf->WriteFixedPosHTML('<div style="background:' . $cNavy . ';width:56mm;height:56mm;border-radius:50%;"></div>', 40, 102, 56, 56, 'hidden');
+        $mpdf->WriteFixedPosHTML('<div style="background:' . $cGold . ';width:50mm;height:50mm;border-radius:50%;"></div>', -8, 147, 50, 50, 'hidden');
+
+        // ===== GEOMETRIC SHAPES: Bottom-Left Group =====
+        $mpdf->WriteFixedPosHTML('<div style="background:' . $cOrange . ';width:26mm;height:26mm;"></div>', 8, 208, 26, 26, 'hidden');
+        $mpdf->WriteFixedPosHTML('<div style="background:' . $cBlue . ';width:26mm;height:26mm;"></div>', 34, 208, 26, 26, 'hidden');
+        $mpdf->WriteFixedPosHTML('<div style="background:' . $cDkBlue . ';width:26mm;height:26mm;"></div>', 8, 234, 26, 26, 'hidden');
+        $mpdf->WriteFixedPosHTML('<div style="background:' . $cOrange . ';width:32mm;height:26mm;"></div>', 34, 234, 32, 26, 'hidden');
+        $mpdf->WriteFixedPosHTML('<div style="background:' . $cBlue . ';width:24mm;height:26mm;border-radius:3mm;"></div>', 60, 234, 24, 26, 'hidden');
+
+        // Blue pill
+        $mpdf->WriteFixedPosHTML('<div style="background:' . $cBlue . ';width:48mm;height:28mm;border-radius:14mm;"></div>', 8, 260, 48, 28, 'hidden');
+        // Cream dot
+        $mpdf->WriteFixedPosHTML('<div style="background:' . $bgCream . ';width:10mm;height:10mm;border-radius:50%;"></div>', 14, 269, 10, 10, 'hidden');
+
+        // ===== GEOMETRIC SHAPES: Bottom-Center Group =====
+        $mpdf->WriteFixedPosHTML('<div style="background:' . $cGold . ';width:50mm;height:50mm;border-radius:50%;"></div>', 88, 245, 50, 50, 'hidden');
+        $mpdf->WriteFixedPosHTML('<div style="background:' . $cOrange . ';width:18mm;height:18mm;border-radius:50%;"></div>', 100, 265, 18, 18, 'hidden');
+        $mpdf->WriteFixedPosHTML('<div style="background:' . $cGold . ';width:22mm;height:22mm;border-radius:50%;"></div>', 103, 257, 22, 22, 'hidden');
+        $mpdf->WriteFixedPosHTML('<div style="background:' . $cNavy . ';width:16mm;height:16mm;border-radius:50%;"></div>', 122, 273, 16, 16, 'hidden');
+
+        // ===== VERTICAL LINE =====
+        $mpdf->WriteFixedPosHTML('<div style="border-left:1mm solid ' . $cNavy . ';height:220mm;"></div>', 97, 30, 2, 220, 'hidden');
+
+        // ===== BRANDING =====
+        $logoPath = self::resolveBrandLogoPath((string) ($brand['cover_logo'] ?? ''));
+
+        // Logo on Left Column (Above Geometry which starts at y=95)
+        if (!empty($logoPath) && file_exists($logoPath)) {
+            $mpdf->WriteFixedPosHTML(
+                '<div><img src="' . $logoPath . '" style="width:65mm;" /></div>',
+                15,
+                38,
+                70,
+                60,
+                'hidden'
+            );
+        }
+
+        // Title on Right Column (Always show title for consistent layout)
+        $mpdf->WriteFixedPosHTML(
+            '<div style="font-family:sans-serif;font-weight:bold;font-size:16pt;color:' . $cTtBlue . ';">'
+            . (string) ($brand['title'] ?? 'NION GEM ASTRO')
+            . '</div>',
+            106,
+            28,
+            95,
+            14,
+            'hidden'
+        );
+
+        // Tagline
+        $mpdf->WriteFixedPosHTML(
+            '<div style="font-family:sans-serif;font-style:italic;font-size:9pt;color:' . $cTxDark . ';">'
+            . (string) ($brand['tagline'] ?? 'Let\'s bring you the new life')
+            . '</div>',
+            106,
+            55,
+            95,
+            8,
+            'hidden'
+        );
+
+        // ===== GREETING =====
+        $mpdf->WriteFixedPosHTML(
+            '<div style="font-family:sans-serif;font-weight:bold;font-size:26pt;color:' . $cGrOr . ';">Hello '
+            . (string) $name . ',</div>',
+            106,
+            72,
+            95,
+            30,
+            'hidden'
+        );
+
+        // ===== WELCOME TEXT =====
+        $welcomeLines = explode("\n", (string) ($brand['cover_welcome_text'] ?? "Welcome To\nYour GEM\nASTROLOGY\nReport"));
+        $wHtml = '';
+        foreach ($welcomeLines as $wl) {
+            $wl = trim($wl);
+            $fw = (strtoupper($wl) === 'ASTROLOGY') ? 'bold' : 'normal';
+            $wHtml .= '<div style="font-weight:' . $fw . ';font-size:20pt;line-height:1.3;color:#000;">' . $wl . '</div>';
+        }
+        $mpdf->WriteFixedPosHTML(
+            '<div style="font-family:sans-serif;">' . $wHtml . '</div>',
+            106,
+            108,
+            95,
+            60,
+            'hidden'
+        );
+
+        // ===== PREPARED BY =====
+        $websiteDisplay = self::getWebsiteDisplay($brand);
+        $phone = (string) ($brand['phone'] ?? '+91 9801834437');
+        $email = (string) ($brand['email'] ?? 'novanexusltd001@gmail.com');
+
+        $preparedHtml = '<div style="font-family:sans-serif;color:' . $cTxDark . ';">'
+            . '<div style="font-weight:bold;font-size:12pt;margin-bottom:2mm;">Prepared by</div>'
+            . '<div style="font-size:10pt;line-height:1.5;">Web: ' . $websiteDisplay . '</div>'
+            . '<div style="font-size:10pt;line-height:1.5;">Phone: ' . $phone . '</div>'
+            . '<div style="font-size:10pt;line-height:1.5;">Email: ' . $email . '</div>'
+            . '</div>';
+
+        $mpdf->WriteFixedPosHTML($preparedHtml, 106, 192, 95, 40, 'hidden');
+    }
+
+    private static function renderContentPage($mpdf, $mulank, $sections, $brand, $langCode)
+    {
+        $mpdf->AddPage();
+
+        // Styles for continuous flow
+        $html = '<style>
+            @page {
+                background-color: #FEF0D5;
+            }
+            body { font-family: sans-serif; background-color: #FEF0D5; }
+            .heading-pill { background-color: #F25C2A; color: #fff; padding: 2mm 5mm; border-radius: 2mm; font-weight: bold; font-size: 14pt; margin-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; text-transform:uppercase; display: inline-block; }
+            .content-box { background-color: #FFE0B2; color: #000; padding: 4mm; border-radius: 2mm; border-top-left-radius: 0; font-size: 11pt; line-height: 1.6; margin-bottom: 8mm; }
+            .mulank-title { font-size: 22pt; font-weight: bold; color: #F25C2A; margin-bottom: 8mm; text-transform: uppercase; border-bottom: 2px solid #F25C2A; display: inline-block; padding-bottom: 2mm; }
+        </style>';
+
+        $html .= '<div style="padding: 10mm 10mm 0 10mm;">';
+
+        // Mulank Heading
+        $html .= '<div class="mulank-title">' . self::getMulankLabel($langCode) . ': ' . $mulank . '</div>';
+
+        foreach ($sections as $section) {
+            $heading = isset($section['heading']) ? (string) $section['heading'] : 'Section';
+            $contentRaw = $section['content'] ?? '';
+            $content = self::pickSectionContent($contentRaw);
+            $content = str_replace('\\n', "\n", $content);
+            $content = self::normalizeContentForLanguage($content, $langCode);
+            $content = nl2br($content);
+
+            $html .= '<div>';
+            $html .= '<div class="heading-pill">' . $heading . '</div>';
+            $html .= '<div class="content-box">' . $content . '</div>';
+            $html .= '</div>';
+        }
+
+        // Footer Note (End of content)
+        if ($langCode === 'hi') {
+            $note = 'नोट: अंक ज्योतिष रिपोर्ट से संबंधित किसी भी प्रश्न के लिए आप हमें 24 घंटे ' . (string) ($brand['phone'] ?? '') . ' पर संपर्क कर सकते हैं।';
+        } elseif ($langCode === 'gu') {
+            $note = 'નોંધ: અંક જ્યોતિષ રિપોર્ટ વિશે કોઈપણ પ્રશ્ન માટે તમે અમને 24 કલાક ' . (string) ($brand['phone'] ?? '') . ' પર સંપર્ક કરી શકો છો।';
+        } else {
+            $note = 'NOTE: You can call us round the clock for any query regarding your numerology report on ' . (string) ($brand['phone'] ?? '');
+        }
+        $html .= '<div style="page-break-before: avoid; background-color:#F25C2A; color:#fff; padding:3mm; border-radius:2mm; text-align:center; font-size:10pt; margin-top:2mm; margin-bottom: 2mm;">' . $note . '</div>';
+
+        $html .= '</div>';
+
+        $mpdf->WriteHTML($html);
+    }
+
+    private static function renderFinalNotePage($mpdf, $brand)
+    {
+        $mpdf->AddPage();
+
+        // Colors
+        $bgDark = '#1C2E40';
+        $cOrange = '#F25C2A';
+        $cGold = '#F5B436';
+        $cBlue = '#2063AA';
+        $cDkBlue = '#142845';
+        $cWhite = '#FFFFFF';
+
+        $phone = (string) ($brand['phone'] ?? '+91 9801834437');
+        $email = (string) ($brand['email'] ?? 'novanexusltd001@gmail.com');
+
+        // Full page Dark Background
+        $mpdf->WriteFixedPosHTML(
+            '<div style="background:' . $bgDark . ';width:100%;height:100%"></div>',
+            0,
+            0,
+            210,
+            297,
+            'hidden'
+        );
+
+        // ===== TOP ORANGE LINE =====
+        $mpdf->WriteFixedPosHTML(
+            '<div style="border-bottom:1.5mm solid ' . $cOrange . ';width:190mm;"></div>',
+            10,
+            15,
+            190,
+            2,
+            'hidden'
+        );
+
+        // ===== NOTE BUTTON =====
+        $mpdf->WriteFixedPosHTML(
+            '<div style="background:' . $cBlue . ';color:' . $cGold . ';font-weight:bold;font-size:14pt;text-align:center;line-height:12mm;border-radius:2mm;">NOTE</div>',
+            88,
+            18,
+            34,
+            12,
+            'hidden'
+        );
+
+        // ===== SECTION 1: Contact note =====
+        $mpdf->WriteFixedPosHTML(
+            '<div style="color:' . $cWhite . ';font-size:10pt;text-align:center;font-family:sans-serif;">YOU CAN CALL US ROUND THE CLOCK FOR ANY QUERY REGARDING YOUR REPORT.<br>IF YOU HAVE ANY THEN DO NOT HESITATE TO CONTACT US.</div>',
+            20,
+            42,
+            170,
+            20,
+            'hidden'
+        );
+
+        // ===== SECTION 2: CALL US ON =====
+        $mpdf->WriteFixedPosHTML(
+            '<div style="color:' . $cGold . ';font-size:16pt;font-weight:bold;text-align:center;font-family:sans-serif;">CALL US ON</div>',
+            20,
+            68,
+            170,
+            10,
+            'hidden'
+        );
+        $mpdf->WriteFixedPosHTML(
+            '<div style="color:' . $cOrange . ';font-size:22pt;font-weight:bold;text-align:center;font-family:sans-serif;">' . $phone . '</div>',
+            20,
+            80,
+            170,
+            15,
+            'hidden'
+        );
+
+        // ===== SECTION 3: Fortune card advice =====
+        $mpdf->WriteFixedPosHTML(
+            '<div style="color:' . $cWhite . ';font-size:10pt;text-align:center;font-family:sans-serif;">FOR SOLUTIONS OF THE ABSENCE NUMBERS\' ENERGIES YOU LACK IN YOUR LIFE,<br>WE ADVISE YOU TO USE THE FORTUNE CARD<br>FOR FURTHER INFO ON THE SAME JUST</div>',
+            20,
+            100,
+            170,
+            25,
+            'hidden'
+        );
+
+        // ===== SECTION 4: CONTACT US ON =====
+        $mpdf->WriteFixedPosHTML(
+            '<div style="color:' . $cGold . ';font-size:16pt;font-weight:bold;text-align:center;font-family:sans-serif;">CONTACT US ON</div>',
+            20,
+            128,
+            170,
+            10,
+            'hidden'
+        );
+        $mpdf->WriteFixedPosHTML(
+            '<div style="color:' . $cOrange . ';font-size:18pt;font-weight:bold;text-align:center;font-family:sans-serif;">' . $email . '</div>',
+            20,
+            140,
+            170,
+            15,
+            'hidden'
+        );
+
+        // ===== SPECIAL NOTE BUTTON =====
+        $mpdf->WriteFixedPosHTML(
+            '<div style="background:' . $cBlue . ';color:' . $cGold . ';font-weight:bold;font-size:14pt;text-align:center;line-height:12mm;border-radius:2mm;">SPECIAL NOTE</div>',
+            75,
+            160,
+            60,
+            12,
+            'hidden'
+        );
+
+        // ===== SECTION 5: Special note text =====
+        $mpdf->WriteFixedPosHTML(
+            '<div style="color:' . $cWhite . ';font-size:10pt;text-align:center;font-family:sans-serif;">WE ARE NOT ADVISING YOU TO TRY THE CALCULATION BY YOUR OWN SELF AS<br>OUR TEAM USES UNIQUE CALCULATION METHOD.<br>WE ARE GLAD TO HAVE HAPPY ASSOCIATION WITH YOU. WE WISH YOU THE BEST FOR<br>YOUR FUTURE ENDEAVOURS.</div>',
+            20,
+            180,
+            170,
+            30,
+            'hidden'
+        );
+
+        // ===== SECTION 6: Email again =====
+        $mpdf->WriteFixedPosHTML(
+            '<div style="color:' . $cOrange . ';font-size:18pt;font-weight:bold;text-align:center;font-family:sans-serif;">' . $email . '</div>',
+            20,
+            218,
+            170,
+            15,
+            'hidden'
+        );
+
+        // ===== FOOTER GEOMETRIC SHAPES =====
+        // 4 Squares (Moved up to y=232 to be safe)
+        $mpdf->WriteFixedPosHTML('<div style="background:' . $cOrange . ';width:28mm;height:20mm;"></div>', 42, 232, 28, 20, 'hidden');
+        $mpdf->WriteFixedPosHTML('<div style="background:' . $cGold . ';width:28mm;height:20mm;"></div>', 70, 232, 28, 20, 'hidden');
+        $mpdf->WriteFixedPosHTML('<div style="background:' . $cBlue . ';width:28mm;height:20mm;"></div>', 98, 232, 28, 20, 'hidden');
+        $mpdf->WriteFixedPosHTML('<div style="background:' . $cDkBlue . ';width:28mm;height:20mm;"></div>', 126, 232, 28, 20, 'hidden');
+
+        // 2 Circles (Moved up to y=242 for safety, bottom 288)
+        $mpdf->WriteFixedPosHTML('<div style="background:' . $cGold . ';width:46mm;height:46mm;border-radius:50%;"></div>', 46, 242, 46, 46, 'hidden');
+        $mpdf->WriteFixedPosHTML('<div style="background:' . $cBlue . ';width:46mm;height:46mm;border-radius:50%;"></div>', 100, 242, 46, 46, 'hidden');
+    }
+
+    // --- Helpers ---
+
+    private static function getMulankLabel($langCode)
+    {
+        return 'Mulank';
+    }
+
+    private static function normalizeContentForLanguage($content, $langCode)
+    {
+        if ($langCode === 'gu' || $langCode === 'hi') {
+            $content = str_replace(['•', '●', '▪', '◦', '▫', '■', '□', '◆', '◇', '○', '◉', '', '', '▪️'], '- ', $content);
+            $lines = preg_split('/\R/u', $content);
+            if (is_array($lines)) {
+                foreach ($lines as &$line) {
+                    $line = preg_replace('/^\s*[\p{P}\p{S}]+\s*/u', '- ', (string) $line);
+                }
+                unset($line);
+                $content = implode("\n", $lines);
+            }
+        }
+        return $content;
+    }
+
+    private static function getWebsiteDisplay($brand)
+    {
+        $websiteName = (string) ($brand['website_name'] ?? 'Trikrypta');
+        $websiteUrl = (string) ($brand['website_url'] ?? '');
+        if (!empty($websiteUrl)) {
+            $host = parse_url($websiteUrl, PHP_URL_HOST);
+            if (!empty($host))
+                return $host;
+            return $websiteUrl;
+        }
+        return $websiteName;
     }
 
     private static function normalizeLanguageCode($lang)
     {
         $lang = strtolower(trim((string) $lang));
-        if ($lang === 'hindi' || $lang === 'hi') {
+        if ($lang === 'hindi' || $lang === 'hi')
             return 'hi';
-        }
-        if ($lang === 'gujarati' || $lang === 'gu') {
+        if ($lang === 'gujarati' || $lang === 'gu')
             return 'gu';
-        }
         return 'en';
     }
 
     private static function getLanguageData($langCode)
     {
-        if ($langCode === 'hi') {
+        if ($langCode === 'hi')
             return function_exists('getHindiData') ? getHindiData() : [];
-        }
-        if ($langCode === 'gu') {
+        if ($langCode === 'gu')
             return function_exists('getGujaratiData') ? getGujaratiData() : [];
-        }
         return function_exists('getEnglishData') ? getEnglishData() : [];
     }
 
@@ -179,10 +528,8 @@ class GemAstroPDF
     private static function resolveBrandLogoPath($logo)
     {
         $logo = trim((string) $logo);
-        if (empty($logo)) {
+        if (empty($logo))
             return '';
-        }
-
         if (strpos($logo, 'http://') === 0 || strpos($logo, 'https://') === 0) {
             if (function_exists('wp_get_upload_dir')) {
                 $upload = wp_get_upload_dir();
@@ -191,461 +538,14 @@ class GemAstroPDF
                 if (!empty($baseurl) && !empty($basedir) && strpos($logo, $baseurl) === 0) {
                     $relative = substr($logo, strlen($baseurl));
                     $candidate = $basedir . $relative;
-                    if (file_exists($candidate)) {
+                    if (file_exists($candidate))
                         return $candidate;
-                    }
                 }
             }
             return $logo;
         }
-
-        if (file_exists($logo)) {
+        if (file_exists($logo))
             return $logo;
-        }
-
         return '';
-    }
-
-    private static function getLanguageFontFamily($langCode, $bold = false)
-    {
-        if ($langCode !== 'gu') {
-            return 'freesans';
-        }
-
-        $cacheKey = $bold ? 'gu_bold' : 'gu_regular';
-        if (isset(self::$fontCache[$cacheKey])) {
-            return self::$fontCache[$cacheKey];
-        }
-
-        $localFile = GEM_ASTRO_PATH . 'fonts/' . ($bold ? 'NotoSansGujarati-Bold.ttf' : 'NotoSansGujarati-Regular.ttf');
-        $systemFile = '/usr/share/fonts/truetype/noto/' . ($bold ? 'NotoSansGujarati-Bold.ttf' : 'NotoSansGujarati-Regular.ttf');
-        $fontFile = file_exists($localFile) ? $localFile : (file_exists($systemFile) ? $systemFile : '');
-
-        if (empty($fontFile) || !class_exists('TCPDF_FONTS')) {
-            self::$fontCache[$cacheKey] = 'freesans';
-            return self::$fontCache[$cacheKey];
-        }
-
-        $style = $bold ? 'B' : '';
-        $fontName = TCPDF_FONTS::addTTFfont($fontFile, 'TrueTypeUnicode', $style, 32);
-
-        self::$fontCache[$cacheKey] = $fontName ? $fontName : 'freesans';
-        return self::$fontCache[$cacheKey];
-    }
-
-    private static function setLangFont($pdf, $langCode, $size, $bold = false, $italic = false)
-    {
-        if ($langCode === 'gu') {
-            $pdf->SetFont(self::getLanguageFontFamily($langCode, $bold), '', $size);
-            return;
-        }
-
-        $style = '';
-        if ($bold) {
-            $style .= 'B';
-        }
-        if ($italic) {
-            $style .= 'I';
-        }
-        $pdf->SetFont('freesans', $style, $size);
-    }
-
-    private static function getMulankLabel($langCode)
-    {
-        return 'Mulank';
-    }
-
-    private static function normalizeContentForLanguage($content, $langCode)
-    {
-        if ($langCode === 'gu') {
-            $content = str_replace(['•', '●', '▪', '◦', '▫', '■', '□', '◆', '◇', '○', '◉', '', '', '▪️'], '-', $content);
-
-            $lines = preg_split('/\R/u', $content);
-            if (is_array($lines)) {
-                foreach ($lines as &$line) {
-                    $line = preg_replace('/^\s*[\p{P}\p{S}]+\s*/u', '- ', (string) $line);
-                }
-                unset($line);
-                $content = implode("\n", $lines);
-            }
-        }
-        return $content;
-    }
-
-    private static function getWebsiteDisplay($brand)
-    {
-        $websiteName = (string) ($brand['website_name'] ?? 'Trikrypta');
-        $websiteUrl = (string) ($brand['website_url'] ?? '');
-
-        if (!empty($websiteUrl)) {
-            $host = parse_url($websiteUrl, PHP_URL_HOST);
-            if (!empty($host)) {
-                return $host;
-            }
-            return $websiteUrl;
-        }
-
-        return $websiteName;
-    }
-
-    private static function renderCoverPage($pdf, $name, $brand)
-    {
-        $pdf->AddPage();
-
-        // Base page background (premium cream)
-        $pdf->SetFillColor(252, 234, 209);
-        $pdf->Rect(0, 0, 210, 297, 'F');
-
-        self::renderCoverSideDesign($pdf);
-
-        $pdf->SetDrawColor(28, 46, 64);
-        $pdf->SetLineWidth(1.1);
-        $pdf->Line(106, 18, 106, 204);
-
-        $logoPath = self::resolveBrandLogoPath((string) ($brand['cover_logo'] ?? ''));
-        if (empty($logoPath)) {
-            $defaultLogo = GEM_ASTRO_PATH . 'fonts/logo.jpg';
-            if (file_exists($defaultLogo)) {
-                $logoPath = $defaultLogo;
-            }
-        }
-
-        if (!empty($logoPath)) {
-            $pdf->Image($logoPath, 112, 10, 34, 0, '', '', '', false, 300);
-            $pdf->Image($logoPath, 20, 84, 72, 0, '', '', '', false, 300);
-        }
-
-        $pdf->SetTextColor(10, 42, 134);
-        $pdf->SetFont('freesans', 'B', 13.5);
-        $pdf->SetXY(112, 28);
-        $pdf->Cell(82, 7, (string) ($brand['title'] ?? 'Trikrypta'), 0, 1, 'L');
-
-        $pdf->SetTextColor(51, 51, 51);
-        $pdf->SetFont('freesans', 'I', 9.8);
-        $pdf->SetXY(112, 35.5);
-        $pdf->Cell(82, 6, (string) ($brand['tagline'] ?? ''), 0, 1, 'L');
-
-        $pdf->SetTextColor(242, 92, 42);
-        $pdf->SetFont('freesans', 'B', 24);
-        $pdf->SetXY(110, 52);
-        $pdf->MultiCell(90, 12, 'Hello ' . $name . ',', 0, 'L', false, 1);
-
-        $pdf->SetTextColor(0, 0, 0);
-        $pdf->SetFont('freesans', '', 18.5);
-        $pdf->SetXY(110, 84);
-        $welcomeText = (string) ($brand['cover_welcome_text'] ?? "Welcome To\nYour GEM\nASTROLOGY\nReport");
-        $welcomeText = str_replace(["\r\n", "\r"], "\n", $welcomeText);
-        $pdf->MultiCell(90, 10, $welcomeText, 0, 'L', false, 1);
-
-        $websiteDisplay = self::getWebsiteDisplay($brand);
-
-        $pdf->SetTextColor(34, 40, 55);
-        $pdf->SetFont('freesans', 'B', 14);
-        $pdf->SetXY(110, 162);
-        $pdf->Cell(88, 8, 'Prepared by', 0, 1, 'L');
-
-        $pdf->SetFont('freesans', '', 11.2);
-        $pdf->SetXY(110, 171);
-        $pdf->Cell(88, 6, 'Web: ' . $websiteDisplay, 0, 1, 'L');
-
-        $pdf->SetXY(110, 179);
-        $pdf->Cell(88, 6, 'Phone: ' . (string) ($brand['phone'] ?? ''), 0, 1, 'L');
-
-        $pdf->SetXY(110, 187);
-        $pdf->MultiCell(88, 6, 'Email: ' . (string) ($brand['email'] ?? ''), 0, 'L', false, 1);
-    }
-
-    private static function renderCoverSideDesign($pdf)
-    {
-        // palette
-        $orange = [242, 92, 42];
-        $blue = [35, 101, 165];
-        $navy = [29, 53, 84];
-        $gold = [245, 175, 65];
-
-        // middle motif stack
-        $pdf->SetFillColor($orange[0], $orange[1], $orange[2]);
-        $pdf->Rect(5, 108, 28, 30, 'F');
-        $pdf->SetFillColor($blue[0], $blue[1], $blue[2]);
-        $pdf->Rect(33, 108, 28, 30, 'F');
-
-        $pdf->SetFillColor($orange[0], $orange[1], $orange[2]);
-        if (method_exists($pdf, 'Circle')) {
-            $pdf->Circle(33, 138, 28, 0, 360, 'F');
-        }
-        $pdf->SetFillColor($navy[0], $navy[1], $navy[2]);
-        if (method_exists($pdf, 'Circle')) {
-            $pdf->Circle(61, 138, 28, 0, 360, 'F');
-        }
-
-        $pdf->SetFillColor($gold[0], $gold[1], $gold[2]);
-        if (method_exists($pdf, 'Circle')) {
-            $pdf->Circle(18, 170, 24, 0, 360, 'F');
-        }
-
-        // bottom motif cluster
-        $pdf->SetFillColor($orange[0], $orange[1], $orange[2]);
-        $pdf->Rect(5, 200, 28, 30, 'F');
-        $pdf->SetFillColor($blue[0], $blue[1], $blue[2]);
-        $pdf->Rect(33, 200, 28, 30, 'F');
-
-        $pdf->SetFillColor($navy[0], $navy[1], $navy[2]);
-        $pdf->Rect(5, 230, 28, 30, 'F');
-        $pdf->SetFillColor($orange[0], $orange[1], $orange[2]);
-        $pdf->Rect(33, 230, 28, 30, 'F');
-
-        $pdf->SetFillColor($blue[0], $blue[1], $blue[2]);
-        if (method_exists($pdf, 'RoundedRect')) {
-            $pdf->RoundedRect(61, 230, 26, 30, 5, '1111', 'F');
-        } else {
-            $pdf->Rect(61, 230, 26, 30, 'F');
-        }
-
-        $pdf->SetFillColor($gold[0], $gold[1], $gold[2]);
-        if (method_exists($pdf, 'Circle')) {
-            $pdf->Circle(113, 260, 27, 0, 360, 'F');
-        }
-
-        $pdf->SetFillColor($orange[0], $orange[1], $orange[2]);
-        if (method_exists($pdf, 'Circle')) {
-            $pdf->Circle(113, 260, 18, 180, 270, 'F');
-        }
-
-        $pdf->SetFillColor($blue[0], $blue[1], $blue[2]);
-        if (method_exists($pdf, 'RoundedRect')) {
-            $pdf->RoundedRect(5, 260, 52, 30, 15, '1111', 'F');
-        } else {
-            $pdf->Rect(5, 260, 52, 30, 'F');
-        }
-
-        $pdf->SetFillColor(252, 234, 209);
-        if (method_exists($pdf, 'Circle')) {
-            $pdf->Circle(18.5, 275, 6, 0, 360, 'F');
-        }
-
-        $pdf->SetFillColor($navy[0], $navy[1], $navy[2]);
-        if (method_exists($pdf, 'Circle')) {
-            $pdf->Circle(125, 275, 8, 0, 360, 'F');
-        }
-    }
-
-    private static function renderContentPage($pdf, $mulank, $sections, $isLast, $showMulank, $brand, $langCode)
-    {
-        $pdf->AddPage();
-        $pdf->SetFillColor(252, 234, 209);
-        $pdf->Rect(0, 0, 210, 297, 'F');
-
-        $pdf->SetTextColor(0, 0, 0);
-        $y = 16;
-
-        if ($showMulank) {
-            // Keep Mulank title in Latin-safe font to avoid box glyphs on some Gujarati TTFs
-            $pdf->SetFont('freesans', 'B', 17);
-            $pdf->SetXY(14, 16);
-            $pdf->Cell(182, 10, self::getMulankLabel($langCode) . ': ' . $mulank, 0, 1, 'L');
-            $y = 31;
-        }
-
-        foreach ($sections as $section) {
-            $heading = isset($section['heading']) ? (string) $section['heading'] : 'Section';
-            $contentRaw = $section['content'] ?? '';
-            $content = self::pickSectionContent($contentRaw);
-            $content = str_replace('\\n', "\n", $content);
-            $content = self::normalizeContentForLanguage($content, $langCode);
-
-            self::setLangFont($pdf, $langCode, 12, true, false);
-            $headingH = $pdf->getStringHeight(176, $heading) + 3;
-            if ($headingH < 9.5) {
-                $headingH = 9.5;
-            }
-
-            // Heading pill (rounded premium style)
-            $pdf->SetFillColor(242, 92, 42);
-            $pdf->SetTextColor(255, 255, 255);
-            if (method_exists($pdf, 'RoundedRect')) {
-                $pdf->RoundedRect(16, $y, 176, $headingH, 2.4, '1111', 'F');
-            } else {
-                $pdf->Rect(16, $y, 176, $headingH, 'F');
-            }
-            $pdf->SetXY(19, $y + 0.8);
-            $pdf->MultiCell(170, $headingH - 1, $heading, 0, 'L', false, 1, 19, $y + 0.8, true, 0, false, true, $headingH - 1, 'M');
-            $y += $headingH + 2.8;
-
-            self::setLangFont($pdf, $langCode, 10.8, false, false);
-            $contentH = $pdf->getStringHeight(176, $content) + 7.5;
-            if ($contentH < 13.5) {
-                $contentH = 13.5;
-            }
-
-            // Ensure footer has breathing space on final page
-            $maxY = $isLast ? 262 : 282;
-            if ($y + $contentH > $maxY) {
-                $contentH = max(13.5, $maxY - $y);
-            }
-
-            $pdf->SetFillColor(255, 179, 71);
-            $pdf->SetTextColor(0, 0, 0);
-            if (method_exists($pdf, 'RoundedRect')) {
-                $pdf->RoundedRect(16, $y, 176, $contentH, 3, '1111', 'F');
-            } else {
-                $pdf->Rect(16, $y, 176, $contentH, 'F');
-            }
-            $pdf->SetXY(20, $y + 2.1);
-            $pdf->MultiCell(168, $contentH - 3.8, $content, 0, 'L', false, 1, 20, $y + 2.1, true, 0, false, true, $contentH - 3.8, 'T');
-            $y += $contentH + 5.4;
-
-            if ($y >= 264) {
-                break;
-            }
-        }
-
-        if ($isLast) {
-            $note = 'NOTE: You can call us round the clock for any query regarding your numerology report on ' . (string) ($brand['phone'] ?? '');
-            $pdf->SetFillColor(242, 92, 42);
-            $pdf->SetTextColor(255, 255, 255);
-            $pdf->SetFont('freesans', 'B', 9);
-            if (method_exists($pdf, 'RoundedRect')) {
-                $pdf->RoundedRect(16, 276, 176, 10, 2.2, '1111', 'F');
-            } else {
-                $pdf->Rect(16, 276, 176, 10, 'F');
-            }
-            $pdf->SetXY(18, 278.2);
-            $pdf->MultiCell(172, 6, $note, 0, 'C', false, 1, 18, 278.2, true, 0, false, true, 6, 'M');
-        }
-    }
-
-    private static function renderFinalNotePage($pdf, $brand)
-    {
-        $pdf->AddPage();
-
-        // Dark premium final page (similar to provided sample style)
-        $pdf->SetFillColor(27, 51, 82);
-        $pdf->Rect(0, 0, 210, 297, 'F');
-
-        $pdf->SetDrawColor(242, 92, 42);
-        $pdf->SetLineWidth(1.2);
-        $pdf->Line(5, 8, 205, 8);
-
-        $pdf->SetFillColor(32, 99, 170);
-        if (method_exists($pdf, 'RoundedRect')) {
-            $pdf->RoundedRect(95, 12, 20, 12, 1.8, '1111', 'F');
-        } else {
-            $pdf->Rect(95, 12, 20, 12, 'F');
-        }
-
-        $pdf->SetTextColor(245, 180, 54);
-        $pdf->SetFont('freesans', 'B', 13);
-        $pdf->SetXY(99, 15.5);
-        $pdf->Cell(12, 5, 'NOTE', 0, 1, 'C');
-
-        $pdf->SetTextColor(255, 255, 255);
-        $pdf->SetFont('freesans', '', 10);
-        $bodyTop = "YOU CAN CALL US ROUND THE CLOCK FOR ANY QUERY REGARDING YOUR REPORT.\nIF YOU HAVE ANY THEN DO NOT HESITATE TO CONTACT US.";
-        $pdf->SetXY(25, 30);
-        $pdf->MultiCell(160, 6, $bodyTop, 0, 'C', false, 1);
-
-        $pdf->SetTextColor(245, 180, 54);
-        $pdf->SetFont('freesans', 'B', 16);
-        $pdf->SetXY(25, 58);
-        $pdf->Cell(160, 8, 'CALL US ON', 0, 1, 'C');
-
-        $pdf->SetTextColor(242, 92, 42);
-        $pdf->SetFont('freesans', 'B', 20);
-        $pdf->SetXY(25, 68);
-        $pdf->Cell(160, 10, (string) ($brand['phone'] ?? ''), 0, 1, 'C');
-
-        $pdf->SetTextColor(255, 255, 255);
-        $pdf->SetFont('freesans', '', 10);
-        $bodyMid = "FOR SOLUTIONS OF THE ABSENCE NUMBERS' ENERGIES YOU LACK IN YOUR LIFE,\nWE ADVISE YOU TO USE THE FORTUNE CARD\nFOR FURTHER INFO ON THE SAME JUST";
-        $pdf->SetXY(25, 90);
-        $pdf->MultiCell(160, 6, $bodyMid, 0, 'C', false, 1);
-
-        $pdf->SetTextColor(245, 180, 54);
-        $pdf->SetFont('freesans', 'B', 16);
-        $pdf->SetXY(25, 120);
-        $pdf->Cell(160, 8, 'CONTACT US ON', 0, 1, 'C');
-
-        $pdf->SetTextColor(242, 92, 42);
-        $pdf->SetFont('freesans', 'B', 18);
-        $pdf->SetXY(25, 130);
-        $pdf->Cell(160, 9, (string) ($brand['email'] ?? ''), 0, 1, 'C');
-
-        $pdf->SetFillColor(32, 99, 170);
-        if (method_exists($pdf, 'RoundedRect')) {
-            $pdf->RoundedRect(82, 145, 46, 12, 1.8, '1111', 'F');
-        } else {
-            $pdf->Rect(82, 145, 46, 12, 'F');
-        }
-
-        $pdf->SetTextColor(245, 180, 54);
-        $pdf->SetFont('freesans', 'B', 16);
-        $pdf->SetXY(85, 148);
-        $pdf->Cell(40, 6, 'SPECIAL NOTE', 0, 1, 'C');
-
-        $pdf->SetTextColor(255, 255, 255);
-        $pdf->SetFont('freesans', '', 10);
-        $bodyBottom = "WE ARE NOT ADVISING YOU TO TRY THE CALCULATION BY YOUR OWN SELF AS\nOUR TEAM USES UNIQUE CALCULATION METHOD.\nWE ARE GLAD TO HAVE HAPPY ASSOCIATION WITH YOU. WE WISH YOU THE BEST FOR\nYOUR FUTURE ENDEAVOURS.";
-        $pdf->SetXY(25, 166);
-        $pdf->MultiCell(160, 6, $bodyBottom, 0, 'C', false, 1);
-
-        $pdf->SetTextColor(242, 92, 42);
-        $pdf->SetFont('freesans', 'B', 18);
-        $pdf->SetXY(25, 206);
-        $pdf->Cell(160, 8, (string) ($brand['email'] ?? ''), 0, 1, 'C');
-
-        // Geometric lower motif to match premium style
-        $pdf->SetFillColor(242, 92, 42);
-        $pdf->Rect(42, 230, 26, 26, 'F');
-        $pdf->SetFillColor(245, 180, 54);
-        $pdf->Rect(68, 230, 26, 26, 'F');
-        $pdf->SetFillColor(32, 99, 170);
-        $pdf->Rect(94, 230, 26, 26, 'F');
-        $pdf->SetFillColor(11, 31, 57);
-        $pdf->Rect(120, 230, 26, 26, 'F');
-
-        $pdf->SetFillColor(245, 180, 54);
-        if (method_exists($pdf, 'Circle')) {
-            $pdf->Circle(68, 274, 22, 0, 360, 'F');
-        }
-        $pdf->SetFillColor(32, 99, 170);
-        if (method_exists($pdf, 'Circle')) {
-            $pdf->Circle(120, 274, 22, 0, 360, 'F');
-        }
-    }
-
-    private static function renderFallbackReport($pdf, $name, $mulank, $sections, $brand, $langCode)
-    {
-        $pdf->resetColumns();
-        $pdf->setPrintHeader(false);
-        $pdf->setPrintFooter(false);
-        $pdf->SetMargins(12, 12, 12);
-        $pdf->SetAutoPageBreak(true, 12);
-
-        $pdf->AddPage();
-        self::setLangFont($pdf, $langCode, 20, true, false);
-        $pdf->Cell(0, 12, 'Kundli Report - ' . $name, 0, 1, 'L');
-        self::setLangFont($pdf, $langCode, 12, false, false);
-        $pdf->Ln(3);
-        $pdf->MultiCell(0, 7, 'Prepared by: ' . (string) ($brand['website_name'] ?? 'Trikrypta'));
-        $pdf->MultiCell(0, 7, 'Website: ' . (string) ($brand['website_url'] ?? ''));
-        $pdf->MultiCell(0, 7, 'Phone: ' . (string) ($brand['phone'] ?? ''));
-        $pdf->MultiCell(0, 7, 'Email: ' . (string) ($brand['email'] ?? ''));
-        $pdf->Ln(4);
-        self::setLangFont($pdf, $langCode, 14, true, false);
-        $pdf->Cell(0, 10, self::getMulankLabel($langCode) . ': ' . $mulank, 0, 1, 'L');
-
-        foreach ($sections as $section) {
-            $heading = isset($section['heading']) ? (string) $section['heading'] : 'Section';
-            $contentRaw = $section['content'] ?? '';
-            $content = self::pickSectionContent($contentRaw);
-            $content = str_replace('\\n', "\n", $content);
-            $content = self::normalizeContentForLanguage($content, $langCode);
-
-            self::setLangFont($pdf, $langCode, 12.5, true, false);
-            $pdf->MultiCell(0, 8, $heading, 0, 'L');
-            self::setLangFont($pdf, $langCode, 10.5, false, false);
-            $pdf->MultiCell(0, 6, $content, 0, 'L');
-            $pdf->Ln(3);
-        }
     }
 }

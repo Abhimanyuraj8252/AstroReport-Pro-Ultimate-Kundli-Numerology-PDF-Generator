@@ -2,9 +2,9 @@
 // includes/send-report.php
 
 // Enable error reporting for debugging
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
+// ini_set('display_errors', 1);
+// ini_set('display_startup_errors', 1);
+// error_reporting(E_ALL);
 
 // Log the request
 error_log("Report Generation Request Received: " . print_r($_POST, true));
@@ -30,14 +30,16 @@ if ($wp_load_path) {
 } else {
     // If WP not found, we mock wp_mail and other functions for standalone testing
     if (!function_exists('wp_mail')) {
-        function wp_mail($to, $subject, $message, $headers = '', $attachments = []) {
+        function wp_mail($to, $subject, $message, $headers = '', $attachments = [])
+        {
             error_log("MOCK MAIL SENDING to $to with subject: $subject");
             error_log("Attachments: " . print_r($attachments, true));
             return true;
         }
     }
     if (!function_exists('wp_upload_dir')) {
-        function wp_upload_dir() {
+        function wp_upload_dir()
+        {
             return [
                 'basedir' => __DIR__ . '/../uploads',
                 'baseurl' => 'http://localhost:8000/uploads'
@@ -45,13 +47,16 @@ if ($wp_load_path) {
         }
     }
     if (!function_exists('sanitize_file_name')) {
-        function sanitize_file_name($filename) {
+        function sanitize_file_name($filename)
+        {
             return preg_replace('/[^a-zA-Z0-9_-]/', '', $filename);
         }
     }
     if (!function_exists('wp_mkdir_p')) {
-        function wp_mkdir_p($dir) {
-            if (!file_exists($dir)) mkdir($dir, 0755, true);
+        function wp_mkdir_p($dir)
+        {
+            if (!file_exists($dir))
+                mkdir($dir, 0755, true);
         }
     }
     // Define constants if not defined
@@ -111,11 +116,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $body .= "<p>Thank you for choosing Nion Gem Astro. Your personalized astrology report is attached in your selected language.</p>";
         $body .= "<p><strong>Note:</strong> Save these files for future reference.</p>";
         $body .= "<p>Regards,<br>Team Nion Gem Astro</p>";
-        
+
         $headers = ['Content-Type: text/html; charset=UTF-8'];
-        
+
         $sent = wp_mail($to, $subject, $body, $headers, [$selected_attachment]);
-        
+
         if ($sent) {
             echo "Success: Email sent with selected language report.";
         } else {
