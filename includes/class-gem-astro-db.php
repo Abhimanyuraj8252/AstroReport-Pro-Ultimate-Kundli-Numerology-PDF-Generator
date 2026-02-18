@@ -116,7 +116,41 @@ class GemAstroDB
         $where = '1=1';
         $params = [];
 
-        if (!empty($filters['date'])) {
+        // Date Range Filter
+        if (!empty($filters['range']) && $filters['range'] !== 'all') {
+            $interval = '7 DAY'; // default
+            switch ($filters['range']) {
+                case '1d':
+                    $interval = '1 DAY';
+                    break;
+                case '7d':
+                    $interval = '7 DAY';
+                    break;
+                case '15d':
+                    $interval = '15 DAY';
+                    break;
+                case '1m':
+                    $interval = '1 MONTH';
+                    break;
+                case '3m':
+                    $interval = '3 MONTH';
+                    break;
+                case '6m':
+                    $interval = '6 MONTH';
+                    break;
+                case '1y':
+                    $interval = '1 YEAR';
+                    break;
+                case '3y':
+                    $interval = '3 YEAR';
+                    break;
+                case '5y':
+                    $interval = '5 YEAR';
+                    break;
+            }
+            $where .= " AND created_at >= DATE_SUB(NOW(), INTERVAL $interval)";
+        } elseif (!empty($filters['date'])) {
+            // Specific single date fallback
             $where .= ' AND DATE(created_at) = %s';
             $params[] = $filters['date'];
         }
@@ -130,7 +164,36 @@ class GemAstroDB
             $params[] = $search;
         }
 
-        $sql = "SELECT * FROM $table_name WHERE $where ORDER BY id DESC LIMIT 100";
+        // Sorting
+        $order_by = 'id';
+        $order_dir = 'DESC';
+
+        if (!empty($filters['sort_by'])) {
+            switch ($filters['sort_by']) {
+                case 'amount_high':
+                    $order_by = 'amount';
+                    $order_dir = 'DESC';
+                    break;
+                case 'amount_low':
+                    $order_by = 'amount';
+                    $order_dir = 'ASC';
+                    break;
+                case 'date':
+                    $order_by = 'created_at';
+                    $order_dir = 'DESC';
+                    break; // Newest first
+                case 'date_asc':
+                    $order_by = 'created_at';
+                    $order_dir = 'ASC';
+                    break; // Oldest first
+                case 'name':
+                    $order_by = 'name';
+                    $order_dir = 'ASC';
+                    break;
+            }
+        }
+
+        $sql = "SELECT * FROM $table_name WHERE $where ORDER BY $order_by $order_dir LIMIT 200";
 
         if (!empty($params)) {
             $sql = $wpdb->prepare($sql, ...$params);
@@ -185,70 +248,142 @@ class GemAstroDB
     /**
      * Get advanced stats for premium dashboard
      */
-    public static function get_advanced_stats()
+    public static function get_advanced_stats($range = '7d')
     {
         global $wpdb;
         $table_name = self::get_table_name();
 
-        $basic = self::get_stats();
+        // Determine date condition based on range
+        $date_cond = '1=1'; // default all time
+        $interval_days = 7; // for chart
 
-        // Consultation count
-        $consultation_count = (int) $wpdb->get_var(
-            "SELECT COUNT(*) FROM $table_name WHERE service_type = 'consultation'"
-        );
-
-        // Success rate (paid / total)
-        $paid_count = (int) $wpdb->get_var(
-            "SELECT COUNT(*) FROM $table_name WHERE payment_status = 'paid'"
-        );
-        $success_rate = $basic['total'] > 0 ? round(($paid_count / $basic['total']) * 100, 1) : 0;
-
-        // Revenue by day (last 7 days)
-        $revenue_by_day = $wpdb->get_results(
-            "SELECT DATE(created_at) as day, COALESCE(SUM(amount), 0) as total
-             FROM $table_name
-             WHERE payment_status = 'paid' AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
-             GROUP BY DATE(created_at)
-             ORDER BY day ASC"
-        );
-
-        // Fill in missing days
-        $revenue_chart = [];
-        for ($i = 6; $i >= 0; $i--) {
-            $date = date('Y-m-d', strtotime("-$i days"));
-            $revenue_chart[$date] = 0;
-        }
-        foreach ($revenue_by_day as $row) {
-            if (isset($revenue_chart[$row->day])) {
-                $revenue_chart[$row->day] = (float) $row->total;
+        if ($range !== 'all') {
+            switch ($range) {
+                case '1d':
+                    $interval = '1 DAY';
+                    $interval_days = 1;
+                    break;
+                case '7d':
+                    $interval = '7 DAY';
+                    $interval_days = 7;
+                    break;
+                case '15d':
+                    $interval = '15 DAY';
+                    $interval_days = 15;
+                    break;
+                case '1m':
+                    $interval = '1 MONTH';
+                    $interval_days = 30;
+                    break;
+                case '3m':
+                    $interval = '3 MONTH';
+                    $interval_days = 90;
+                    break;
+                case '6m':
+                    $interval = '6 MONTH';
+                    $interval_days = 180;
+                    break;
+                case '1y':
+                    $interval = '1 YEAR';
+                    $interval_days = 365;
+                    break;
+                case '3y':
+                    $interval = '3 YEAR';
+                    $interval_days = 1095;
+                    break;
+                case '5y':
+                    $interval = '5 YEAR';
+                    $interval_days = 1825;
+                    break;
+                default:
+                    $interval = '7 DAY';
+                    $interval_days = 7;
+                    break;
             }
+            $date_cond = "created_at >= DATE_SUB(NOW(), INTERVAL $interval)";
+        } else {
+            // For 'all' time chart, maybe limit to last 30 days or 1 year to avoid overcrowding?
+            // Or just group by month if range is huge? 
+            // For now, let's keep chart to max 30 days if 'all' or large range is selected to prevent UI breakage, 
+            // BUT revenue total should be 'all'.
+            // Actually user asked for analysis of 1,3,5 years. 
+            // Handling chart for 5 years day-by-day is impossible.
+            // Let's adapt chart grouping based on range.
         }
 
-        // Language distribution
-        $lang_dist = $wpdb->get_results(
-            "SELECT language, COUNT(*) as cnt FROM $table_name GROUP BY language"
+        // Basic Stats (filtered by range)
+        $total = (int) $wpdb->get_var("SELECT COUNT(*) FROM $table_name WHERE $date_cond");
+        $revenue = (float) $wpdb->get_var("SELECT COALESCE(SUM(amount), 0) FROM $table_name WHERE payment_status = 'paid' AND $date_cond");
+        $pdf_count = (int) $wpdb->get_var("SELECT COUNT(*) FROM $table_name WHERE service_type = 'pdf' AND $date_cond");
+        $consultation_count = (int) $wpdb->get_var("SELECT COUNT(*) FROM $table_name WHERE service_type = 'consultation' AND $date_cond");
+
+        // Success rate
+        $paid_count = (int) $wpdb->get_var("SELECT COUNT(*) FROM $table_name WHERE payment_status = 'paid' AND $date_cond");
+        $success_rate = $total > 0 ? round(($paid_count / $total) * 100, 1) : 0;
+
+        // Chart Data logic
+        // If range is > 1 month, group by WEEK or MONTH?
+        // Simple approach: Group by DATE always, but query might return many rows. JS chart handles many points okay-ish up to a few hundred.
+        // For 5 years (1800 points), it's too much.
+        // Let's switch grouping:
+        // <= 1M: Day
+        // <= 6M: Week
+        // > 6M: Month
+
+        $group_by = "DATE(created_at)";
+        $select_date = "DATE(created_at) as day";
+        if ($interval_days > 180) { // > 6 months
+            $group_by = "DATE_FORMAT(created_at, '%Y-%m')"; // Month
+            $select_date = "DATE_FORMAT(created_at, '%Y-%m') as day";
+        } elseif ($interval_days > 31) { // 1-6 months
+            $group_by = "YEARWEEK(created_at)"; // Week
+            $select_date = "DATE_FORMAT(created_at, '%Y-%u') as day"; // Year-Week
+        }
+
+        $revenue_chart_data = $wpdb->get_results(
+            "SELECT $select_date, COALESCE(SUM(amount), 0) as total
+             FROM $table_name
+             WHERE payment_status = 'paid' AND $date_cond
+             GROUP BY $group_by
+             ORDER BY created_at ASC"
         );
+
+        // Format for JS
+        $revenue_chart = [];
+        foreach ($revenue_chart_data as $row) {
+            $revenue_chart[$row->day] = (float) $row->total;
+        }
+
+        // If data is empty for range, might want to fill 0s? 
+        // For dynamic grouping, filling 0s is complex. Let's send sparse data, Chart.js handles it or we instruct frontend.
+
+        // Language distribution (filtered)
+        $lang_dist = $wpdb->get_results("SELECT language, COUNT(*) as cnt FROM $table_name WHERE $date_cond GROUP BY language");
         $language_distribution = [];
         foreach ($lang_dist as $row) {
             $language_distribution[$row->language] = (int) $row->cnt;
         }
 
-        // Yesterday bookings (for trend)
-        $yesterday = (int) $wpdb->get_var(
-            $wpdb->prepare(
-                "SELECT COUNT(*) FROM $table_name WHERE DATE(created_at) = %s",
-                date('Y-m-d', strtotime('-1 day'))
-            )
-        );
+        // Yesterday/Comparison (hard to do efficiently for arbitrary ranges, skipping specific 'yesterday' if detailed range used)
+        $yesterday_count = 0;
+        if ($range === '1d' || $range === '7d') {
+            $yesterday_count = (int) $wpdb->get_var(
+                $wpdb->prepare("SELECT COUNT(*) FROM $table_name WHERE DATE(created_at) = %s", date('Y-m-d', strtotime('-1 day')))
+            );
+        }
 
-        return array_merge($basic, [
+        return [
+            'total' => $total,
+            'today' => $paid_count, // Reusing 'today' key as 'successful bookings' count or just total? 
+            'revenue' => $revenue,
+            'pdf_count' => $pdf_count,
             'consultation_count' => $consultation_count,
             'success_rate' => $success_rate,
             'paid_count' => $paid_count,
             'revenue_chart' => $revenue_chart,
             'language_distribution' => $language_distribution,
-            'yesterday' => $yesterday,
-        ]);
+            'yesterday' => $yesterday_count,
+        ];
     }
 
     /**

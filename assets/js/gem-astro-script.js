@@ -109,9 +109,10 @@ window.openGemAstroBooking = async function (type, price, title) {
     }
 
     // Use configured price for PDF if available (AFTER refetching config)
-    if (type === 'pdf' && GEM_ASTRO_CONFIG.pdfPrice > 0) {
-        price = GEM_ASTRO_CONFIG.pdfPrice;
-    }
+    // REMOVED: Forced price override to allow dynamic pricing from shortcode/form
+    // if (type === 'pdf' && GEM_ASTRO_CONFIG.pdfPrice > 0) {
+    //    price = GEM_ASTRO_CONFIG.pdfPrice;
+    // }
 
     try {
         const orderRes = await postWithNonceRetry(() => {

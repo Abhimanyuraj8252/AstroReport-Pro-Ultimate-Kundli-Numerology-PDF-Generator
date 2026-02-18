@@ -29,6 +29,8 @@ class GemAstroAdmin
         add_action('wp_ajax_gem_astro_delete_booking', [$this, 'ajax_delete_booking']);
         // AJAX: Get Booking Details
         add_action('wp_ajax_gem_astro_get_booking_details', [$this, 'ajax_get_booking_details']);
+        // AJAX: Filter Bookings
+        add_action('wp_ajax_gem_astro_filter_bookings', [$this, 'ajax_filter_bookings']);
 
         // Schedule Cron
         if (!wp_next_scheduled('gem_astro_daily_cleanup')) {
@@ -82,7 +84,9 @@ class GemAstroAdmin
         register_setting('gem_astro_settings', 'gem_astro_cover_logo');
         register_setting('gem_astro_settings', 'gem_astro_cover_welcome_text');
         register_setting('gem_astro_settings', 'gem_astro_email_subject');
+        register_setting('gem_astro_settings', 'gem_astro_email_subject');
         register_setting('gem_astro_settings', 'gem_astro_email_body');
+        register_setting('gem_astro_settings', 'gem_astro_services'); // New: JSON string of services
     }
 
     public function enqueue_admin_assets($hook)
@@ -107,11 +111,14 @@ class GemAstroAdmin
         if (!current_user_can('manage_options')) {
             wp_send_json_error('Unauthorized');
         }
-        $stats = GemAstroDB::get_advanced_stats();
-        $recent = GemAstroDB::get_recent_bookings(5);
+
+        $range = isset($_POST['range']) ? sanitize_text_field($_POST['range']) : '7d';
+        $stats = GemAstroDB::get_advanced_stats($range);
+
+        // We only need basic stats for the top cards, but get_advanced_stats returns everything including chart data
+
         wp_send_json_success([
             'stats' => $stats,
-            'recent' => $recent,
             'time' => current_time('H:i:s')
         ]);
     }
@@ -196,6 +203,71 @@ class GemAstroAdmin
         } else {
             wp_send_json_error('Booking not found');
         }
+    }
+
+    /**
+     * AJAX: Filter Bookings Table
+     */
+    public function ajax_filter_bookings()
+    {
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Unauthorized');
+        }
+
+        $filters = [
+            'range' => isset($_POST['range']) ? sanitize_text_field($_POST['range']) : 'all',
+            'sort_by' => isset($_POST['sort_by']) ? sanitize_text_field($_POST['sort_by']) : 'date',
+            'search' => isset($_POST['search']) ? sanitize_text_field($_POST['search']) : '',
+        ];
+
+        $bookings = GemAstroDB::get_all_bookings($filters);
+
+        ob_start();
+        if (empty($bookings)) {
+            echo '<tr><td colspan="7" class="ga-empty">No bookings found for this period.</td></tr>';
+        } else {
+            foreach ($bookings as $b) {
+                $ll = ['hi' => '🇮🇳 HI', 'en' => '🇬🇧 EN', 'gu' => '🇮🇳 GU'];
+                ?>
+                <tr>
+                    <td><span class="ga-id">#<?php echo $b->id; ?></span></td>
+                    <td>
+                        <div class="ga-user-info">
+                            <div class="ga-avatar"><?php echo strtoupper(substr($b->name, 0, 1)); ?></div>
+                            <div>
+                                <div class="ga-name"><?php echo esc_html($b->name); ?></div>
+                                <small>📱 <?php echo esc_html($b->phone); ?> · 🎂 <?php echo esc_html($b->dob); ?></small>
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        <span class="ga-badge <?php echo $b->service_type === 'pdf' ? 'ga-badge-blue' : 'ga-badge-purple'; ?>">
+                            <?php echo $b->service_type === 'pdf' ? '📄 PDF' : '🗓️ Consult'; ?>
+                        </span>
+                    </td>
+                    <td>
+                        <span class="ga-badge ga-badge-lang"><?php echo $ll[$b->language] ?? strtoupper($b->language); ?></span>
+                    </td>
+                    <td>
+                        <span class="ga-badge <?php echo $b->payment_status === 'paid' ? 'ga-badge-green' : 'ga-badge-red'; ?>">
+                            <?php echo $b->payment_status === 'paid' ? '✓ Paid' : '✗ ' . ucfirst($b->payment_status); ?>
+                        </span>
+                        <div class="ga-payment-id"><?php echo esc_html($b->payment_id); ?></div>
+                    </td>
+                    <td><span class="ga-amount">₹<?php echo number_format($b->amount, 0); ?></span></td>
+                    <td><span class="ga-date"><?php echo esc_html($b->created_at); ?></span></td>
+                    <td>
+                        <div class="ga-actions">
+                            <button class="ga-btn-icon ga-view-btn" data-id="<?php echo $b->id; ?>" title="View Details">👁️</button>
+                            <button class="ga-btn-icon ga-delete-btn" data-id="<?php echo $b->id; ?>" title="Delete">🗑️</button>
+                        </div>
+                    </td>
+                </tr>
+                <?php
+            }
+        }
+        $html = ob_get_clean();
+        wp_send_json_success(['html' => $html]);
     }
 
     /**
@@ -293,6 +365,18 @@ class GemAstroAdmin
                     </div>
                 </div>
                 <div class="ga-header-right">
+                    <select id="ga-stats-range" class="ga-select" onchange="refreshStats()" style="margin-right:15px;padding:6px;border-radius:6px;background:rgba(255,255,255,0.1);color:#fff;border:1px solid rgba(255,255,255,0.2);">
+                        <option value="today">Today</option>
+                        <option value="7d" selected>Last 7 Days</option>
+                        <option value="15d">Last 15 Days</option>
+                        <option value="1m">Last 1 Month</option>
+                        <option value="3m">Last 3 Months</option>
+                        <option value="6m">Last 6 Months</option>
+                        <option value="1y">Last 1 Year</option>
+                        <option value="3y">Last 3 Years</option>
+                        <option value="5y">Last 5 Years</option>
+                        <option value="all">All Time</option>
+                    </select>
                     <span class="ga-live-badge" id="ga-live-badge">
                         <span class="ga-live-dot"></span> LIVE
                     </span>
@@ -603,13 +687,26 @@ class GemAstroAdmin
 
             <!-- Bookings Table -->
             <div class="ga-card ga-table-card">
-                <div class="ga-card-header">
-                    <h3>📋 Bookings
-                        <?php if (!empty($filters['search']) || !empty($filters['date'])): ?>
-                            <span class="ga-badge ga-badge-yellow">Filtered</span>
-                        <?php endif; ?>
-                    </h3>
-                    <span class="ga-table-count"><?php echo count($bookings); ?> records</span>
+                <div class="ga-card-header" style="flex-wrap:wrap;gap:15px;">
+                    <h3>📋 Bookings</h3>
+                    
+                    <div class="ga-table-filters" style="display:flex;gap:10px;flex:1;justify-content:flex-end;">
+                        <select id="ga-bookings-range" class="ga-select ga-select-small" onchange="filterBookings()" style="background:rgba(255,255,255,0.1);color:#fff;border:1px solid rgba(255,255,255,0.1);border-radius:4px;padding:4px 8px;">
+                            <option value="all">All Time</option>
+                            <option value="today">Today</option>
+                            <option value="7d">Last 7 Days</option>
+                            <option value="1m">Last 1 Month</option>
+                            <option value="1y">Last 1 Year</option>
+                        </select>
+                        <select id="ga-bookings-sort" class="ga-select ga-select-small" onchange="filterBookings()" style="background:rgba(255,255,255,0.1);color:#fff;border:1px solid rgba(255,255,255,0.1);border-radius:4px;padding:4px 8px;">
+                            <option value="date">Newest First</option>
+                            <option value="date_asc">Oldest First</option>
+                            <option value="amount_high">Amount (High -> Low)</option>
+                            <option value="amount_low">Amount (Low -> High)</option>
+                            <option value="name">Name (A-Z)</option>
+                        </select>
+                        <input type="text" id="ga-bookings-search" placeholder="Search..." class="ga-input ga-input-small" oninput="filterBookings()" style="width:150px;padding:4px 8px;font-size:13px;">
+                    </div>
                 </div>
                 <div class="ga-table-wrap">
                     <table class="ga-table">
@@ -804,7 +901,8 @@ class GemAstroAdmin
         <script>
             (function () {
                 var ajaxUrl = '<?php echo admin_url("admin-ajax.php"); ?>';
-                function refreshStats() {
+                window.refreshStats = function () {
+                    var range = document.getElementById('ga-stats-range').value;
                     var xhr = new XMLHttpRequest();
                     xhr.open('POST', ajaxUrl, true);
                     xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
@@ -829,9 +927,38 @@ class GemAstroAdmin
                             } catch (e) { }
                         }
                     };
-                    xhr.send('action=gem_astro_live_stats');
+                    xhr.send('action=gem_astro_live_stats&range=' + range);
                 }
+
+                // Initial Load
+                refreshStats();
                 setInterval(refreshStats, 30000);
+
+                // Bookings Filter
+                window.filterBookings = function () {
+                    var range = document.getElementById('ga-bookings-range').value;
+                    var sort = document.getElementById('ga-bookings-sort').value;
+                    var search = document.getElementById('ga-bookings-search').value;
+
+                    var tbody = document.getElementById('ga-bookings-body');
+                    tbody.style.opacity = '0.5';
+
+                    var xhr = new XMLHttpRequest();
+                    xhr.open('POST', ajaxUrl, true);
+                    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+                    xhr.onload = function () {
+                        if (xhr.status === 200) {
+                            try {
+                                var r = JSON.parse(xhr.responseText);
+                                if (r.success) {
+                                    tbody.innerHTML = r.data.html;
+                                }
+                            } catch (e) { }
+                        }
+                        tbody.style.opacity = '1';
+                    };
+                    xhr.send('action=gem_astro_filter_bookings&range=' + range + '&sort_by=' + sort + '&search=' + search);
+                };
             })();
         </script>
         <?php echo $this->get_logo_picker_script(); ?>
@@ -911,12 +1038,156 @@ class GemAstroAdmin
                     </div>
 
                     <div class="ga-form-group">
-                        <label for="gem_astro_pdf_price">PDF Report Price (₹)</label>
-                        <input type="number" id="gem_astro_pdf_price" name="gem_astro_pdf_price"
-                            value="<?php echo esc_attr(get_option('gem_astro_pdf_price', '1')); ?>" min="1" step="1"
-                            class="ga-input ga-input-mono">
-                        <small class="ga-help">Amount to charge for the PDF report.</small>
+                        <label>Services & Pricing</label>
+                        <div class="ga-services-wrap">
+                            <table class="ga-services-table" id="ga-services-table">
+                                <thead>
+                                    <tr>
+                                        <th>Service Name</th>
+                                        <th>Price (₹)</th>
+                                        <th>Type</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ga-services-list">
+                                    <!-- Rows injected by JS -->
+                                </tbody>
+                            </table>
+                            <button type="button" class="ga-btn ga-btn-small" id="ga-add-service">+ Add Service</button>
+                            <input type="hidden" name="gem_astro_services" id="gem_astro_services"
+                                value="<?php echo esc_attr(get_option('gem_astro_services', '[]')); ?>">
+
+                            <!-- Migration fallback: If services are empty, we can use this logic in JS to seed from pdf_price -->
+                            <input type="hidden" id="old_pdf_price"
+                                value="<?php echo esc_attr(get_option('gem_astro_pdf_price', '1')); ?>">
+                        </div>
+                        <small class="ga-help">Define your services here. These will appear in the booking form
+                            dropdown.</small>
                     </div>
+
+                    <style>
+                        .ga-services-table {
+                            width: 100%;
+                            border-collapse: collapse;
+                            margin-bottom: 10px;
+                        }
+
+                        .ga-services-table th {
+                            text-align: left;
+                            padding: 8px;
+                            color: #aaa;
+                            font-size: 12px;
+                            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+                        }
+
+                        .ga-services-table td {
+                            padding: 8px;
+                            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+                        }
+
+                        .ga-service-input {
+                            width: 100%;
+                            background: rgba(0, 0, 0, 0.2);
+                            border: 1px solid rgba(255, 255, 255, 0.1);
+                            padding: 8px;
+                            border-radius: 4px;
+                            color: #fff;
+                        }
+
+                        .ga-service-select {
+                            width: 100%;
+                            background: rgba(0, 0, 0, 0.2);
+                            border: 1px solid rgba(255, 255, 255, 0.1);
+                            padding: 8px;
+                            border-radius: 4px;
+                            color: #fff;
+                        }
+
+                        .ga-btn-small {
+                            padding: 6px 12px;
+                            font-size: 13px;
+                            background: rgba(255, 255, 255, 0.1);
+                            color: #fff;
+                            border: none;
+                            cursor: pointer;
+                            border-radius: 4px;
+                        }
+
+                        .ga-btn-small:hover {
+                            background: rgba(255, 255, 255, 0.2);
+                        }
+
+                        .ga-btn-danger {
+                            color: #ff6b6b;
+                            background: transparent;
+                        }
+
+                        .ga-btn-danger:hover {
+                            color: #ff4c4c;
+                            background: rgba(255, 0, 0, 0.1);
+                        }
+                    </style>
+
+                    <script>
+                        (function () {
+                            const raw = document.getElementById('gem_astro_services').value;
+                            let services = [];
+                            try {
+                                services = JSON.parse(raw);
+                            } catch (e) { }
+
+                            // Fallback/Migration: If no services, add default PDF service
+                            if (!Array.isArray(services) || services.length === 0) {
+                                const oldPrice = document.getElementById('old_pdf_price').value || '1';
+                                services = [
+                                    { name: 'Kundali Report (PDF)', price: oldPrice, type: 'pdf' }
+                                ];
+                            }
+
+                            const tbody = document.getElementById('ga-services-list');
+                            const hiddenInput = document.getElementById('gem_astro_services');
+
+                            function render() {
+                                tbody.innerHTML = '';
+                                services.forEach((s, idx) => {
+                                    const tr = document.createElement('tr');
+                                    tr.innerHTML = `
+                                        <td><input type="text" class="ga-service-input" value="${s.name}" oninput="updateService(${idx}, 'name', this.value)"></td>
+                                        <td><input type="number" class="ga-service-input" value="${s.price}" oninput="updateService(${idx}, 'price', this.value)"></td>
+                                        <td>
+                                            <select class="ga-service-select" onchange="updateService(${idx}, 'type', this.value)">
+                                                <option value="pdf" ${s.type === 'pdf' ? 'selected' : ''}>PDF Report</option>
+                                                <option value="consult" ${s.type === 'consult' ? 'selected' : ''}>Consultation</option>
+                                            </select>
+                                        </td>
+                                        <td><button type="button" class="ga-btn ga-btn-small ga-btn-danger" onclick="removeService(${idx})">×</button></td>
+                                    `;
+                                    tbody.appendChild(tr);
+                                });
+                                hiddenInput.value = JSON.stringify(services);
+                            }
+
+                            window.updateService = function (idx, key, val) {
+                                services[idx][key] = val;
+                                hiddenInput.value = JSON.stringify(services);
+                            };
+
+                            window.removeService = function (idx) {
+                                if (confirm('Remove this service?')) {
+                                    services.splice(idx, 1);
+                                    render();
+                                }
+                            };
+
+                            document.getElementById('ga-add-service').onclick = function () {
+                                services.push({ name: 'New Service', price: '100', type: 'pdf' });
+                                render();
+                            };
+
+                            render();
+                        })();
+                    </script>
+
 
                     <hr style="border-color:rgba(255,255,255,0.08);margin:18px 0;">
                     <h4 style="margin:0 0 12px 0;color:#fff;">🪪 PDF Brand & Contact (Cover + Last Page)</h4>

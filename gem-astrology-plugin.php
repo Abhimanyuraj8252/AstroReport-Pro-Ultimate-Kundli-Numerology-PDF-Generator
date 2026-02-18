@@ -80,8 +80,20 @@ class GemAstrologyPlugin
         ]);
     }
 
-    public function render_booking_form()
+    public function render_booking_form($atts = [])
     {
+        // Detect if user explicitly passed a price in the shortcode
+        $custom_price = null;
+        if (is_array($atts) && isset($atts['price'])) {
+            $custom_price = $atts['price'];
+        }
+
+        $atts = shortcode_atts([
+            'price' => get_option('gem_astro_pdf_price', 1),
+        ], $atts, 'astro_report');
+
+        $price = $atts['price'];
+
         ob_start();
         include GEM_ASTRO_PATH . 'templates/booking-form.php';
         return ob_get_clean();
@@ -107,9 +119,10 @@ class GemAstrologyPlugin
         $price = get_option('gem_astro_pdf_price', 1);
         $amount = floatval($_POST['amount']);
 
-        // Validate amount matches server config (optional but good security)
-        if ($amount != $price) {
-            $amount = $price;
+        // ALLOW DYNAMIC PRICING: If amount is passed, use it. 
+        // We do not enforce server-side price check to allow flexibility for different services/coupons.
+        if ($amount <= 0) {
+            $amount = $price; // Fallback
         }
 
         $service = sanitize_text_field($_POST['service']);

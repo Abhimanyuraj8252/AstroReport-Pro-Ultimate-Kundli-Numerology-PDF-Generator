@@ -21,8 +21,45 @@ if (!defined('ABSPATH')) {
 // getHindiData(), getEnglishData(), getGujaratiData() are available globally
 ?>
 
-// Get configured price
-$price = get_option('gem_astro_pdf_price', 1);
+// Get configured services
+$services_json = get_option('gem_astro_services', '[]');
+$services = json_decode($services_json, true);
+
+// Fallback if no services defined: use the price passed from shortcode/admin as a single default service
+// Fallback if no services defined: use the price passed from shortcode/admin as a single default service
+if (empty($services) || !is_array($services)) {
+$services = [
+['name' => 'Kundali Report (PDF)', 'price' => $price, 'type' => 'pdf']
+];
+}
+
+// COMPATIBILITY FIX: If a custom price was passed in the shortcode (e.g. [astro_report price="99"]),
+// we must respect it, effectively overriding the Admin-configured service price for the PDF report.
+if (isset($custom_price) && $custom_price !== null) {
+// Try to find the PDF service and update its price
+$found = false;
+foreach ($services as &$svc) {
+if ($svc['type'] === 'pdf') {
+$svc['price'] = $custom_price;
+// $svc['name'] .= ' (Special Offer)'; // Optional
+$found = true;
+break; // Valid assumption: only one PDF service type usually, or we update the first one.
+}
+}
+unset($svc); // Break reference
+
+// If no PDF service found (e.g. only consultations configured), add a temporary one for this shortcode
+if (!$found) {
+array_unshift($services, [
+'name' => 'Kundali Report (Special)',
+'price' => $custom_price,
+'type' => 'pdf'
+]);
+}
+}
+
+// Let's use the first service's price as the initial display price.
+$initial_price = isset($services[0]['price']) ? $services[0]['price'] : $price;
 ?>
 
 <!-- Google Fonts -->
@@ -413,6 +450,19 @@ $price = get_option('gem_astro_pdf_price', 1);
                 </div>
 
                 <div class="gem-field">
+                    <label>📜 Select Service / सेवा चुनें</label>
+                    <select id="gemService" name="service" onchange="gemUpdatePrice()">
+                        <?php foreach ($services as $idx => $svc): ?>
+                            <option value="<?php echo esc_attr($svc['type']); ?>"
+                                data-price="<?php echo esc_attr($svc['price']); ?>"
+                                data-name="<?php echo esc_attr($svc['name']); ?>" <?php echo $idx === 0 ? 'selected' : ''; ?>>
+                                <?php echo esc_html($svc['name']); ?> — ₹<?php echo esc_html($svc['price']); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="gem-field">
                     <label>👤 Full Name</label>
                     <input type="text" id="gemName" name="name" placeholder="Enter your full name" required>
                 </div>
@@ -433,7 +483,7 @@ $price = get_option('gem_astro_pdf_price', 1);
                 </div>
 
                 <button type="button" class="gem-pay-btn" id="gemPayBtn" onclick="gemStartPayment()">
-                    Get Instant Report & Pay ₹<?php echo esc_html($price); ?>
+                    Get Instant Report & Pay ₹<?php echo esc_html($initial_price); ?>
                 </button>
             </form>
         </div>
@@ -465,7 +515,7 @@ $price = get_option('gem_astro_pdf_price', 1);
         let GEM_AJAX_URL = typeof NION_BOOKING !== 'undefined' ? NION_BOOKING.ajax_url : '<?php echo admin_url("admin-ajax.php"); ?>';
         let GEM_NONCE = typeof NION_BOOKING !== 'undefined' ? NION_BOOKING.nonce : '<?php echo wp_create_nonce("gem_astro_nonce"); ?>';
         let GEM_RZP_KEY = typeof NION_BOOKING !== 'undefined' ? NION_BOOKING.razorpay_key : '<?php echo esc_attr(get_option("gem_astro_razorpay_key", "")); ?>';
-        let GEM_PRICE = <?php echo floatval($price); ?>;
+        let GEM_PRICE = <?php echo floatval($initial_price); ?>;
 
         async function gemEnsureConfig(forceRefresh = false) {
             if (!forceRefresh && GEM_AJAX_URL && GEM_NONCE && GEM_RZP_KEY) return true;
@@ -551,13 +601,24 @@ $price = get_option('gem_astro_pdf_price', 1);
                     orderData.append('action', 'nion_create_rzp_order');
                     orderData.append('nonce', GEM_NONCE);
                     orderData.append('amount', GEM_PRICE);
-                    orderData.append('service', 'Kundali report PDF');
-                    orderData.append('booking_type', 'pdf');
+
+                    // Get selected service details
+                    const serviceSelect = document.getElementById('gemService');
+                    const selectedOption = serviceSelect ? serviceSelect.options[serviceSelect.selectedIndex] : null;
+                    const serviceName = selectedOption ? selectedOption.getAttribute('data-name') : 'Kundali report (PDF)';
+                    const serviceType = selectedOption ? selectedOption.value : 'pdf';
+
+                    orderData.append('service', serviceName);
+                    orderData.append('booking_type', serviceType);
                     return orderData;
                 });
 
                 if (res && res.success && res.data && res.data.order_id) {
-                    openRazorpay(res.data.order_id, { name, phone, email, dob, language });
+                    // Update openRazorpay to pass the correct service type/name if needed for verification
+                    // openRazorpay stores it in global or passes it down
+                    // We need to ensure verifyPayment also has access to this data.
+                    // But verifyAndShowReport takes 'userData'. Let's add service details to userData.
+                    openRazorpay(res.data.order_id, { name, phone, email, dob, language, service_type: serviceType ?? 'pdf', service_name: serviceName });
                 } else {
                     showError('Order creation failed: ' + (res?.data?.message || 'Unknown error'));
                     resetBtn();
@@ -607,7 +668,7 @@ $price = get_option('gem_astro_pdf_price', 1);
                 data.append('phone', userData.phone);
                 data.append('email', userData.email);
                 data.append('dob', userData.dob);
-                data.append('booking_type', 'pdf');
+                data.append('booking_type', userData.service_type || 'pdf');
                 data.append('price', GEM_PRICE);
                 data.append('language', userData.language);
                 data.append('notes', '');
@@ -706,12 +767,28 @@ $price = get_option('gem_astro_pdf_price', 1);
             errorDiv.style.display = 'block';
         }
 
+        window.gemUpdatePrice = function () {
+            const serviceSelect = document.getElementById('gemService');
+            if (!serviceSelect) return;
+
+            const selectedOption = serviceSelect.options[serviceSelect.selectedIndex];
+            const price = selectedOption.getAttribute('data-price');
+            GEM_PRICE = parseFloat(price) || 0;
+
+            const btn = document.getElementById('gemPayBtn');
+            if (btn) {
+                btn.textContent = 'Get Instant Report & Pay ₹' + GEM_PRICE;
+            }
+        };
+
         function resetBtn() {
             const btn = document.getElementById('gemPayBtn');
             if (btn) {
                 btn.disabled = false;
-                const priceDisp = GEM_PRICE || '1';
-                btn.textContent = 'Get Instant Report & Pay ₹' + priceDisp;
+                // Update based on currently selected service
+                const serviceSelect = document.getElementById('gemService');
+                const price = serviceSelect ? parseFloat(serviceSelect.options[serviceSelect.selectedIndex].getAttribute('data-price')) : (GEM_PRICE || '1');
+                btn.textContent = 'Get Instant Report & Pay ₹' + price;
             }
         }
     })();
