@@ -334,10 +334,10 @@ class GemAstroDB
         $select_date = "DATE(created_at) as day";
         if ($interval_days > 180) { // > 6 months
             $group_by = "DATE_FORMAT(created_at, '%Y-%m')"; // Month
-            $select_date = "DATE_FORMAT(created_at, '%Y-%m') as day";
+            $select_date = "DATE_FORMAT(created_at, '%Y-%m-01') as day"; // Force 1st of month for valid JS Date
         } elseif ($interval_days > 31) { // 1-6 months
-            $group_by = "YEARWEEK(created_at)"; // Week
-            $select_date = "DATE_FORMAT(created_at, '%Y-%u') as day"; // Year-Week
+            $group_by = "YEARWEEK(created_at, 1)"; // Weekweek (Mon-Sun)
+            $select_date = "MIN(DATE(created_at)) as day"; // Logic: Use first booking date of the week as label
         }
 
         $revenue_chart_data = $wpdb->get_results(

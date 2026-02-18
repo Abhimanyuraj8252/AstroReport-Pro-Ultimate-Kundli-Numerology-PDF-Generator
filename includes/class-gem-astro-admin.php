@@ -365,7 +365,8 @@ class GemAstroAdmin
                     </div>
                 </div>
                 <div class="ga-header-right">
-                    <select id="ga-stats-range" class="ga-select" onchange="refreshStats()" style="margin-right:15px;padding:6px;border-radius:6px;background:rgba(255,255,255,0.1);color:#fff;border:1px solid rgba(255,255,255,0.2);">
+                    <select id="ga-stats-range" class="ga-select" onchange="refreshStats()"
+                        style="margin-right:15px;padding:6px;border-radius:6px;background:rgba(255,255,255,0.1);color:#fff;border:1px solid rgba(255,255,255,0.2);">
                         <option value="today">Today</option>
                         <option value="7d" selected>Last 7 Days</option>
                         <option value="15d">Last 15 Days</option>
@@ -689,23 +690,26 @@ class GemAstroAdmin
             <div class="ga-card ga-table-card">
                 <div class="ga-card-header" style="flex-wrap:wrap;gap:15px;">
                     <h3>📋 Bookings</h3>
-                    
+
                     <div class="ga-table-filters" style="display:flex;gap:10px;flex:1;justify-content:flex-end;">
-                        <select id="ga-bookings-range" class="ga-select ga-select-small" onchange="filterBookings()" style="background:rgba(255,255,255,0.1);color:#fff;border:1px solid rgba(255,255,255,0.1);border-radius:4px;padding:4px 8px;">
+                        <select id="ga-bookings-range" class="ga-select ga-select-small" onchange="filterBookings()"
+                            style="background:rgba(255,255,255,0.1);color:#fff;border:1px solid rgba(255,255,255,0.1);border-radius:4px;padding:4px 8px;">
                             <option value="all">All Time</option>
                             <option value="today">Today</option>
                             <option value="7d">Last 7 Days</option>
                             <option value="1m">Last 1 Month</option>
                             <option value="1y">Last 1 Year</option>
                         </select>
-                        <select id="ga-bookings-sort" class="ga-select ga-select-small" onchange="filterBookings()" style="background:rgba(255,255,255,0.1);color:#fff;border:1px solid rgba(255,255,255,0.1);border-radius:4px;padding:4px 8px;">
+                        <select id="ga-bookings-sort" class="ga-select ga-select-small" onchange="filterBookings()"
+                            style="background:rgba(255,255,255,0.1);color:#fff;border:1px solid rgba(255,255,255,0.1);border-radius:4px;padding:4px 8px;">
                             <option value="date">Newest First</option>
                             <option value="date_asc">Oldest First</option>
                             <option value="amount_high">Amount (High -> Low)</option>
                             <option value="amount_low">Amount (Low -> High)</option>
                             <option value="name">Name (A-Z)</option>
                         </select>
-                        <input type="text" id="ga-bookings-search" placeholder="Search..." class="ga-input ga-input-small" oninput="filterBookings()" style="width:150px;padding:4px 8px;font-size:13px;">
+                        <input type="text" id="ga-bookings-search" placeholder="Search..." class="ga-input ga-input-small"
+                            oninput="filterBookings()" style="width:150px;padding:4px 8px;font-size:13px;">
                     </div>
                 </div>
                 <div class="ga-table-wrap">
@@ -915,19 +919,65 @@ class GemAstroAdmin
                                     var el = function (id) { return document.getElementById(id); };
                                     if (el('ga-stat-today')) el('ga-stat-today').textContent = s.today;
                                     if (el('ga-stat-total')) el('ga-stat-total').textContent = s.total;
+
+                                    // Properly format revenue
+                                    var rev = Number(s.revenue_filtered || s.revenue); // Use filtered revenue if available, else total
+                                    // Actually, get_advanced_stats returns strict period revenue separately? 
+                                    // The PHP structure is: 'revenue' => total_revenue (usually). 
+                                    // Let's check get_advanced_stats. It returns 'revenue' (filtered sum) and 'revenue_chart'.
+                                    // So s.revenue IS the filtered revenue.
                                     if (el('ga-stat-revenue')) el('ga-stat-revenue').textContent = '₹' + Number(s.revenue).toLocaleString('en-IN');
+
                                     if (el('ga-stat-pdf')) el('ga-stat-pdf').textContent = s.pdf_count;
                                     if (el('ga-stat-consult')) el('ga-stat-consult').textContent = s.consultation_count;
                                     if (el('ga-stat-rate')) el('ga-stat-rate').textContent = s.success_rate + '%';
                                     if (el('ga-last-updated')) el('ga-last-updated').textContent = 'Updated: ' + r.data.time;
+
+                                    // Update Chart
+                                    if (s.revenue_chart) {
+                                        updateChart(s.revenue_chart);
+                                    }
+
                                     // Pulse the live badge
                                     var badge = el('ga-live-badge');
                                     if (badge) { badge.classList.remove('ga-pulse'); void badge.offsetWidth; badge.classList.add('ga-pulse'); }
                                 }
-                            } catch (e) { }
+                            } catch (e) { console.error(e); }
                         }
                     };
                     xhr.send('action=gem_astro_live_stats&range=' + range);
+                }
+
+                function updateChart(data) {
+                    var container = document.getElementById('ga-chart');
+                    if (!container) return;
+
+                    // Convert object to array and sort by date key just in case
+                    var entries = Object.entries(data); // [['2024-02-18', 100], ...]
+                    // Find max for scaling
+                    var max = 0;
+                    entries.forEach(function (e) { if (Number(e[1]) > max) max = Number(e[1]); });
+                    if (max === 0) max = 1;
+
+                    var html = '';
+                    entries.forEach(function (e) {
+                        var dateStr = e[0]; // YYYY-MM-DD
+                        var amount = Number(e[1]);
+                        var height = Math.max((amount / max) * 100, 4);
+
+                        // Format Date (e.g., 18 Feb)
+                        var d = new Date(dateStr);
+                        var day = d.getDate();
+                        var month = d.toLocaleString('default', { month: 'short' });
+                        var label = day + ' ' + month;
+
+                        html += '<div class="ga-chart-bar-wrap">';
+                        html += '<div class="ga-chart-amount">₹' + amount.toLocaleString('en-IN') + '</div>';
+                        html += '<div class="ga-chart-bar" style="height: ' + height + '%;"></div>';
+                        html += '<div class="ga-chart-label">' + label + '</div>';
+                        html += '</div>';
+                    });
+                    container.innerHTML = html;
                 }
 
                 // Initial Load
@@ -1839,8 +1889,8 @@ class GemAstroAdmin
             flex-wrap: wrap;
         }
 
-        /* ====== INPUTS ====== */
-        .ga-input {
+        /* ====== INPUTS & SELECTS ====== */
+        .ga-input, .ga-select {
             width: 100%;
             padding: 10px 14px;
             background: rgba(255,255,255,0.05);
@@ -1851,10 +1901,30 @@ class GemAstroAdmin
             font-family: "Inter", sans-serif;
             transition: border-color 0.2s, box-shadow 0.2s;
         }
-        .ga-input:focus {
+        .ga-input:focus, .ga-select:focus {
             outline: none;
             border-color: #F5A623;
             box-shadow: 0 0 0 3px rgba(245,166,35,0.15);
+        }
+        .ga-select {
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 24 24\' stroke=\'%23ffffff\'%3E%3Cpath stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'2\' d=\'M19 9l-7 7-7-7\'%3E%3C/path%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 14px center;
+            background-size: 16px;
+            padding-right: 40px;
+            cursor: pointer;
+        }
+        .ga-select option {
+            background-color: #1a1033; /* Dark background for options */
+            color: #fff;
+            padding: 10px;
+        }
+        .ga-input-small, .ga-select-small {
+            padding: 6px 10px;
+            font-size: 12px;
+            height: auto;
+            background: rgba(255,255,255,0.08);
         }
         .ga-input::placeholder { color: rgba(255,255,255,0.25); }
         .ga-input-mono { font-family: "JetBrains Mono", "Fira Code", monospace; }
