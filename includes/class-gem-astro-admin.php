@@ -25,6 +25,16 @@ class GemAstroAdmin
         add_action('wp_ajax_gem_astro_live_stats', [$this, 'ajax_live_stats']);
         // AJAX: CSV Export
         add_action('wp_ajax_gem_astro_export_csv', [$this, 'ajax_export_csv']);
+        // AJAX: Delete Booking
+        add_action('wp_ajax_gem_astro_delete_booking', [$this, 'ajax_delete_booking']);
+        // AJAX: Get Booking Details
+        add_action('wp_ajax_gem_astro_get_booking_details', [$this, 'ajax_get_booking_details']);
+
+        // Schedule Cron
+        if (!wp_next_scheduled('gem_astro_daily_cleanup')) {
+            wp_schedule_event(time(), 'daily', 'gem_astro_daily_cleanup');
+        }
+        add_action('gem_astro_daily_cleanup', [$this, 'cleanup_old_pdfs']);
     }
 
     public function register_menus()
@@ -71,6 +81,8 @@ class GemAstroAdmin
         register_setting('gem_astro_settings', 'gem_astro_contact_email');
         register_setting('gem_astro_settings', 'gem_astro_cover_logo');
         register_setting('gem_astro_settings', 'gem_astro_cover_welcome_text');
+        register_setting('gem_astro_settings', 'gem_astro_email_subject');
+        register_setting('gem_astro_settings', 'gem_astro_email_body');
     }
 
     public function enqueue_admin_assets($hook)
@@ -138,6 +150,77 @@ class GemAstroAdmin
         }
         fclose($out);
         exit;
+    }
+
+    /**
+     * AJAX: Delete Booking
+     */
+    public function ajax_delete_booking()
+    {
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Unauthorized');
+        }
+
+        $id = intval($_POST['id']);
+        if (!$id) {
+            wp_send_json_error('Invalid ID');
+        }
+
+        $result = GemAstroDB::delete_booking($id);
+
+        if ($result !== false) {
+            wp_send_json_success(['message' => 'Booking deleted successfully']);
+        } else {
+            wp_send_json_error(['message' => 'Failed to delete booking']);
+        }
+    }
+
+    /**
+     * AJAX: Get Booking Details (For View Modal)
+     */
+    public function ajax_get_booking_details()
+    {
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Unauthorized');
+        }
+
+        $id = intval($_POST['id']);
+        if (!$id) {
+            wp_send_json_error('Invalid ID');
+        }
+
+        $booking = GemAstroDB::get_booking_by_id($id);
+
+        if ($booking) {
+            wp_send_json_success($booking);
+        } else {
+            wp_send_json_error('Booking not found');
+        }
+    }
+
+    /**
+     * Cron: Cleanup Old PDFs
+     * Deletes generated reports older than 24 hours to save space
+     */
+    public function cleanup_old_pdfs()
+    {
+        $upload_dir = wp_upload_dir();
+        $gem_astro_dir = $upload_dir['basedir'] . '/gem-astrology-reports/';
+
+        if (!is_dir($gem_astro_dir)) {
+            return;
+        }
+
+        $files = glob($gem_astro_dir . '*.pdf');
+        $now = time();
+
+        foreach ($files as $file) {
+            if (is_file($file)) {
+                if ($now - filemtime($file) >= 24 * 60 * 60) { // 24 hours
+                    unlink($file);
+                }
+            }
+        }
     }
 
     /**
@@ -539,12 +622,13 @@ class GemAstroAdmin
                                 <th>Payment</th>
                                 <th>Amount</th>
                                 <th>Date</th>
+                                <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php if (empty($bookings)): ?>
                                 <tr>
-                                    <td colspan="7" class="ga-empty-state">
+                                    <td colspan="8" class="ga-empty-state">
                                         <div class="ga-empty-icon">📭</div>
                                         <div class="ga-empty-text">No bookings found</div>
                                         <div class="ga-empty-sub">Bookings will appear here once customers start ordering reports
@@ -588,6 +672,14 @@ class GemAstroAdmin
                                         </td>
                                         <td><span class="ga-amount">₹<?php echo number_format($b->amount, 0); ?></span></td>
                                         <td><span class="ga-date"><?php echo esc_html($b->created_at); ?></span></td>
+                                        <td>
+                                            <div class="ga-actions">
+                                                <button class="ga-btn-icon ga-view-btn" data-id="<?php echo $b->id; ?>"
+                                                    title="View Details">👁️</button>
+                                                <button class="ga-btn-icon ga-delete-btn" data-id="<?php echo $b->id; ?>"
+                                                    title="Delete">🗑️</button>
+                                            </div>
+                                        </td>
                                     </tr>
                                 <?php endforeach; ?>
                             <?php endif; ?>
@@ -596,6 +688,117 @@ class GemAstroAdmin
                 </div>
             </div>
         </div>
+
+        <!-- Booking Details Modal -->
+        <div id="ga-booking-modal" class="ga-modal">
+            <div class="ga-modal-content">
+                <span class="ga-close-modal">&times;</span>
+                <div class="ga-modal-header">
+                    <h2>Booking Details <span id="ga-modal-id"></span></h2>
+                </div>
+                <div class="ga-modal-body" id="ga-modal-body">
+                    <!-- Content populated by JS -->
+                    <div class="ga-loader">Loading...</div>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            jQuery(document).ready(function ($) {
+                // View Booking
+                $('.ga-view-btn').on('click', function (e) {
+                    e.preventDefault();
+                    var id = $(this).data('id');
+                    $('#ga-booking-modal').css('display', 'flex');
+                    $('#ga-modal-id').text('#' + id);
+                    $('#ga-modal-body').html('<div class="ga-loader">Loading...</div>');
+
+                    $.ajax({
+                        url: ajaxurl,
+                        type: 'POST',
+                        data: {
+                            action: 'gem_astro_get_booking_details',
+                            id: id
+                        },
+                        success: function (response) {
+                            if (response.success) {
+                                var b = response.data;
+                                var html = `
+                                <div class="ga-detail-grid">
+                                    <div class="ga-detail-item"><strong>Name:</strong> ${b.name}</div>
+                                    <div class="ga-detail-item"><strong>Email:</strong> ${b.email}</div>
+                                    <div class="ga-detail-item"><strong>Phone:</strong> ${b.phone}</div>
+                                    <div class="ga-detail-item"><strong>DOB:</strong> ${b.dob}</div>
+                                    <div class="ga-detail-item"><strong>Time of Birth:</strong> ${b.time || 'N/A'}</div>
+                                    <div class="ga-detail-item"><strong>Place of Birth:</strong> ${b.place || 'N/A'}</div>
+                                    <div class="ga-detail-item"><strong>Service:</strong> ${b.service_type}</div>
+                                    <div class="ga-detail-item"><strong>Language:</strong> ${b.language}</div>
+                                    <div class="ga-detail-item"><strong>Payment ID:</strong> ${b.payment_id}</div>
+                                    <div class="ga-detail-item"><strong>Amount:</strong> ₹${b.amount}</div>
+                                    <div class="ga-detail-item"><strong>Status:</strong> ${b.payment_status}</div>
+                                    <div class="ga-detail-item"><strong>Date:</strong> ${b.created_at}</div>
+                                </div>
+                                <div class="ga-detail-notes">
+                                    <strong>Notes:</strong><br>
+                                    <p>${b.notes || 'No notes provided.'}</p>
+                                </div>
+                            `;
+                                $('#ga-modal-body').html(html);
+                            } else {
+                                $('#ga-modal-body').html('<p class="ga-error">Failed to load details.</p>');
+                            }
+                        },
+                        error: function () {
+                            $('#ga-modal-body').html('<p class="ga-error">Server error.</p>');
+                        }
+                    });
+                });
+
+                // Close Modal
+                $('.ga-close-modal, .ga-modal').on('click', function (e) {
+                    if (e.target === this) {
+                        $('#ga-booking-modal').hide();
+                    }
+                });
+
+                // Delete Booking
+                $('.ga-delete-btn').on('click', function (e) {
+                    e.preventDefault();
+                    if (!confirm('Are you sure you want to delete this booking? This cannot be undone.')) {
+                        return;
+                    }
+
+                    var btn = $(this);
+                    var row = btn.closest('tr');
+                    var id = btn.data('id');
+
+                    btn.prop('disabled', true).text('...');
+
+                    $.ajax({
+                        url: ajaxurl,
+                        type: 'POST',
+                        data: {
+                            action: 'gem_astro_delete_booking',
+                            id: id
+                        },
+                        success: function (response) {
+                            if (response.success) {
+                                row.fadeOut(300, function () {
+                                    $(this).remove();
+                                });
+                            } else {
+                                alert(response.data.message || 'Failed to delete');
+                                btn.prop('disabled', false).text('🗑️');
+                            }
+                        },
+                        error: function () {
+                            alert('Server error.');
+                            btn.prop('disabled', false).text('🗑️');
+                        }
+                    });
+                });
+            });
+        </script>
 
         <!-- Live Stats JS -->
         <script>
@@ -769,6 +972,13 @@ class GemAstroAdmin
                                 style="flex:1;min-width:280px;">
                             <button type="button" class="ga-btn ga-btn-ghost ga-logo-picker">Select Logo</button>
                         </div>
+                        <?php $logo_url = get_option('gem_astro_cover_logo', ''); ?>
+                        <div id="ga-logo-preview"
+                            style="margin-top:10px;<?php echo empty($logo_url) ? 'display:none;' : ''; ?>">
+                            <img id="ga-logo-preview-img" src="<?php echo esc_attr($logo_url); ?>"
+                                style="max-width:120px;max-height:80px;border-radius:8px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);padding:4px;">
+                        </div>
+                        <small class="ga-help">Recommended: 200×200px PNG with transparent background</small>
                     </div>
 
                     <div class="ga-form-group">
@@ -777,6 +987,24 @@ class GemAstroAdmin
                             class="ga-input"><?php echo esc_textarea(get_option('gem_astro_cover_welcome_text', "Welcome To\nYour GEM\nASTROLOGY\nReport")); ?></textarea>
                         <small class="ga-help">Yeh text cover page par "Welcome To Your GEM ASTROLOGY Report" ki jagah show
                             hoga.</small>
+                    </div>
+
+                    <hr style="border-color:rgba(255,255,255,0.08);margin:18px 0;">
+                    <h4 style="margin:0 0 12px 0;color:#fff;">📧 Email Template (Report Delivery)</h4>
+
+                    <div class="ga-form-group">
+                        <label for="gem_astro_email_subject">Email Subject</label>
+                        <input type="text" id="gem_astro_email_subject" name="gem_astro_email_subject"
+                            value="<?php echo esc_attr(get_option('gem_astro_email_subject', '🌟 Your Personalized GEM Astrology Report')); ?>"
+                            placeholder="🌟 Your Personalized GEM Astrology Report" class="ga-input">
+                        <small class="ga-help">Use <code>{name}</code> to insert the customer name</small>
+                    </div>
+
+                    <div class="ga-form-group">
+                        <label for="gem_astro_email_body">Email Body (HTML)</label>
+                        <textarea id="gem_astro_email_body" name="gem_astro_email_body" rows="6" class="ga-input"
+                            style="font-family:monospace;font-size:13px;"><?php echo esc_textarea(get_option('gem_astro_email_body', '<h1>Namaste {name},</h1><p>Thank you for choosing Nion Gem Astro. Your personalized astrology report is attached in your selected language.</p><p><strong>Note:</strong> Save these files for future reference.</p><p>Regards,<br>Team Nion Gem Astro</p>')); ?></textarea>
+                        <small class="ga-help">HTML allowed. Use <code>{name}</code> to insert the customer name.</small>
                     </div>
 
                     <button type="submit" class="ga-btn ga-btn-primary ga-btn-lg">💾 Save Settings</button>
@@ -884,7 +1112,10 @@ class GemAstroAdmin
                         // Do something with attachment.id and/or attachment.url here
                         if (attachment && attachment.url) {
                             input_field.val(attachment.url);
-                            input_field.trigger("change"); // Trigger change for any listeners
+                            input_field.trigger("change");
+                            // Update logo preview
+                            $("#ga-logo-preview-img").attr("src", attachment.url);
+                            $("#ga-logo-preview").show();
                         }
                     });
 
@@ -1437,6 +1668,29 @@ class GemAstroAdmin
             color: rgba(255,255,255,0.6);
         }
         .ga-client-cell { display: flex; align-items: center; gap: 12px; }
+        .ga-actions {
+            display: flex;
+            gap: 6px;
+        }
+        .ga-btn-icon {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 6px;
+            color: rgba(255,255,255,0.7);
+            cursor: pointer;
+            padding: 6px;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        .ga-btn-icon:hover {
+            background: rgba(255,255,255,0.15);
+            color: #fff;
+            transform: scale(1.1);
+        }
+        .ga-btn-icon:disabled { opacity: 0.5; cursor: not-allowed; }
+        .ga-view-btn:hover { border-color: #60a5fa; color: #60a5fa; }
+        .ga-delete-btn:hover { border-color: #fb7185; color: #fb7185; }
+
         .ga-client-avatar {
             width: 38px;
             height: 38px;
@@ -1578,6 +1832,64 @@ class GemAstroAdmin
         @media (max-width: 480px) {
             .ga-stats-grid { grid-template-columns: 1fr; }
         }
+        /* Modal */
+        .ga-modal {
+            display: none;
+            position: fixed;
+            z-index: 9999;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.8);
+            backdrop-filter: blur(5px);
+            align-items: center;
+            justify-content: center;
+        }
+        .ga-modal-content {
+            background: linear-gradient(160deg, #1a1033 0%, #0d1526 100%);
+            margin: auto;
+            padding: 30px;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 20px;
+            width: 90%;
+            max-width: 600px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+            position: relative;
+        }
+        .ga-close-modal {
+            color: rgba(255,255,255,0.5);
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            position: absolute;
+            right: 20px;
+            top: 15px;
+            transition: color 0.2s;
+        }
+        .ga-close-modal:hover { color: #fff; }
+        .ga-modal-header h2 { margin: 0 0 20px 0; font-size: 20px; color: #fff; }
+        .ga-modal-body { color: rgba(255,255,255,0.8); font-size: 14px; line-height: 1.6; }
+        
+        .ga-detail-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px 20px;
+            margin-bottom: 20px;
+        }
+        .ga-detail-item strong { color: rgba(255,255,255,0.4); font-size: 12px; display: block; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
+        .ga-detail-notes {
+            background: rgba(255,255,255,0.04);
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid rgba(255,255,255,0.06);
+        }
+        .ga-detail-notes p { margin: 5px 0 0 0; font-size: 13px; font-style: italic; color: rgba(255,255,255,0.6); }
+
+        /* Loader */
+        .ga-loader { text-align: center; padding: 20px; color: rgba(255,255,255,0.5); font-style: italic; }
         ';
     }
 }

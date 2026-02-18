@@ -132,16 +132,21 @@ class GemAstrologyPlugin
             ]
         ];
 
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_USERPWD, $key_id . ':' . $key_secret);
-        curl_setopt($ch, CURLOPT_POST, 1);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data));
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        $ch = wp_remote_post($url, [
+            'headers' => [
+                'Authorization' => 'Basic ' . base64_encode($key_id . ':' . $key_secret),
+                'Content-Type' => 'application/x-www-form-urlencoded',
+            ],
+            'body' => $data,
+            'timeout' => 30,
+        ]);
 
-        $response = curl_exec($ch);
-        $http_status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
+        if (is_wp_error($ch)) {
+            wp_send_json_error(['message' => 'Could not connect to Razorpay: ' . $ch->get_error_message()]);
+        }
+
+        $http_status = wp_remote_retrieve_response_code($ch);
+        $response = wp_remote_retrieve_body($ch);
 
         if ($http_status === 200) {
             $order = json_decode($response, true);
@@ -214,11 +219,18 @@ class GemAstrologyPlugin
                 // Send email with selected language PDF only
                 if (!empty($selected_pdf_path) && file_exists($selected_pdf_path) && !empty($booking_data['email'])) {
                     $to = $booking_data['email'];
-                    $subject = '🌟 Your Personalized AstroReport Pro Report';
-                    $body = '<h1>Namaste ' . esc_html($booking_data['name']) . ',</h1>';
-                    $body .= '<p>Thank you for choosing AstroReport Pro. Your personalized astrology report is attached in your selected language.</p>';
-                    $body .= '<p><strong>Note:</strong> Save these files for future reference.</p>';
-                    $body .= '<p>Regards,<br>Team Trikrypta</p>';
+
+                    // Use configured email template or defaults
+                    $default_subject = '🌟 Your Personalized AstroReport Pro Report';
+                    $default_body = '<h1>Namaste {name},</h1><p>Thank you for choosing AstroReport Pro. Your personalized astrology report is attached in your selected language.</p><p><strong>Note:</strong> Save these files for future reference.</p><p>Regards,<br>Team Trikrypta</p>';
+
+                    $subject = get_option('gem_astro_email_subject', $default_subject);
+                    $body = get_option('gem_astro_email_body', $default_body);
+
+                    // Replace {name} placeholder
+                    $subject = str_replace('{name}', esc_html($booking_data['name']), $subject);
+                    $body = str_replace('{name}', esc_html($booking_data['name']), $body);
+
                     $headers = ['Content-Type: text/html; charset=UTF-8'];
                     wp_mail($to, $subject, $body, $headers, [$selected_pdf_path]);
                 }

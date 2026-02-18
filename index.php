@@ -401,7 +401,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="form-subtitle">Numerology Report Generator</div>
 
             <?php if ($error): ?>
-                <div style="color:red; text-align:center; margin-bottom:10px; font-weight:bold;"><?= $error ?></div>
+                <div style="color:red; text-align:center; margin-bottom:10px; font-weight:bold;">
+                    <?= htmlspecialchars($error) ?></div>
             <?php endif; ?>
 
             <form method="POST" id="gemForm">

@@ -32,10 +32,10 @@ Plugin ka internal flow:
 1. User form fill karta hai (name, phone, email, DOB, language, service)
 2. Mulank calculate hota hai
 3. Language file se content fetch hota hai (`hi/en/gu`)
-4. PDF generate hota hai
+4. **mPDF** se PDF generate hota hai (Unicode supported — Hindi, Gujarati fonts work perfectly)
 5. Booking DB mein save hoti hai
 6. Response mein `pdf_url` aur status aata hai
-7. Email bheja jaata hai (server mail config par depend)
+7. Email bheja jaata hai (admin settings se **customizable template** ke saath)
 
 Important AJAX actions:
 - `nion_get_booking_config`
@@ -53,15 +53,19 @@ Default shortcode:
 ### Minimum system requirements
 - WordPress 5+
 - PHP 7.4+ (8.x preferred)
+- PHP `mbstring` extension (mPDF ke liye required)
 - HTTPS enabled (especially payment site ke liye)
 - Writable directory: `wp-content/uploads`
 
 ### Plugin package requirements
 Ensure yeh files/folders exist karte hon:
 - `gem-astrology-plugin.php`
+- `uninstall.php`
 - `includes/class-gem-astro-pdf.php`
+- `includes/class-gem-astro-admin.php`
+- `includes/class-gem-astro-db.php`
 - `includes/send-report.php`
-- `includes/tcpdf/`
+- `includes/vendor/mpdf/` (mPDF library)
 - `templates/booking-form.php`
 
 ### Mail delivery requirement (recommended)
@@ -92,7 +96,7 @@ Step 3: Plugin upload aur activate
 
 Step 4: Verify plugin active hai
 1. `Plugins` list mein `AstroReport Pro` dekhna chahiye
-2. Sidebar mein plugin settings/menu visible hona chahiye
+2. Left sidebar mein **AstroReport Pro** menu visible hona chahiye
 
 ## Method B: cPanel/FTP se install
 
@@ -109,22 +113,26 @@ Step 2: Activation
 
 ## 4) Basic Verification (Mode choose karne se pehle)
 
-Yeh 5 checks zaroor karo:
+Yeh 6 checks zaroor karo:
 
-1. PHP fatal to nahi aa raha
-  - `wp-content/debug.log` check karo (agar WP_DEBUG enabled hai)
+1. **PHP fatal to nahi aa raha**
+   - `wp-content/debug.log` check karo (agar WP_DEBUG enabled hai)
 
-2. PDF engine available hai
-  - Confirm karo: `includes/tcpdf/tcpdf.php` exists
+2. **mPDF engine available hai**
+   - Confirm karo: `includes/vendor/mpdf/` folder exists
+   - PHP `mbstring` extension enabled hai
 
-3. Upload writable hai
-  - `wp-content/uploads/` writable hona chahiye
+3. **Upload writable hai**
+   - `wp-content/uploads/` writable hona chahiye
 
-4. AJAX endpoint accessible hai
-  - Browser/network console mein `admin-ajax.php` requests fail nahi honi chahiye
+4. **AJAX endpoint accessible hai**
+   - Browser/network console mein `admin-ajax.php` requests fail nahi honi chahiye
 
-5. Nonce config aa raha hai
-  - Frontend JS mein `window.NION_BOOKING` object present hona chahiye
+5. **Nonce config aa raha hai**
+   - Frontend JS mein `window.NION_BOOKING` object present hona chahiye
+
+6. **Admin Dashboard load ho raha hai**
+   - Left menu mein AstroReport Pro click karo — dashboard dikhna chahiye
 
 ---
 
@@ -142,12 +150,28 @@ Note:
 - Test ke liye `rzp_test_...`
 - Live ke liye `rzp_live_...`
 
-### Step 5.2: Plugin settings mein keys save karo
+### Step 5.2: Plugin settings mein configure karo
 1. WP Admin open karo
-2. `AstroReport Pro` settings page kholo
-3. `Razorpay Key ID` paste karo
-4. `Razorpay Secret` paste karo
-5. Save button click karo
+2. **AstroReport Pro → Settings** page kholo
+3. Aapko yeh sab configure karna hai:
+
+| Setting | Kya daalein |
+|---------|------------|
+| **Razorpay Key ID** | `rzp_test_xxx` ya `rzp_live_xxx` |
+| **Razorpay Secret** | Secret key from Razorpay |
+| **PDF Report Price (₹)** | Amount (e.g., `99`, `499`) — **ab admin se configurable hai!** |
+| **Brand Title** | Aapke brand ka naam |
+| **Tagline** | Tagline ya subtitle |
+| **Website Name** | Website display name |
+| **Website URL** | Full URL |
+| **Phone** | Contact phone |
+| **Email** | Contact email |
+| **Cover Logo** | Click "Select Logo" → media library se choose karo → **preview dikhega** |
+| **Welcome Text** | Cover page par welcome message |
+| **Email Subject** | Email ka subject (use `{name}` for customer name) |
+| **Email Body** | HTML email template (use `{name}` for customer name) |
+
+4. **Save Settings** click karo
 
 ### Step 5.3: Frontend page create karo
 Option 1 (shortcode):
@@ -161,31 +185,32 @@ Option 1 (shortcode):
 
 4. Publish
 
-Option 2 (aap `form.html` use kar rahe ho):
-1. Existing HTML widget/template mein `form.html` render karo
-2. Ensure JS config values available ho:
-  - `window.NION_BOOKING.ajax_url`
-  - `window.NION_BOOKING.nonce`
-  - `window.NION_BOOKING.razorpay_key`
+Option 2 (custom form integration):
+1. Existing HTML widget/template mein JS config values available karo:
+   - `window.NION_BOOKING.ajax_url`
+   - `window.NION_BOOKING.nonce`
+   - `window.NION_BOOKING.razorpay_key`
+   - `window.NION_BOOKING.price`
 
 ### Step 5.4: End-to-end payment test
 1. Test key mode on rakho
 2. Frontend form open karo
-3. Service select karo
-4. Date/time select karo
-5. Details submit karo
-6. Razorpay popup me test payment complete karo
+3. Language select karo
+4. Name, Phone, Email, DOB fill karo
+5. Pay button click karo
+6. Razorpay popup mein test payment complete karo
 7. Payment success ke baad verify:
-  - booking record insert hua
-  - PDF generate hua
-  - `pdf_url` mila
-  - email receive hui
+   - ✅ PDF auto-download hua
+   - ✅ Report screen par dikhta hai
+   - ✅ Booking admin dashboard mein dikhi
+   - ✅ Email receive hui (PDF attached)
 
 ### Step 5.5: Live jaane se pehle final switch
 1. Plugin settings mein test keys remove karo
 2. Live keys save karo
-3. ₹1/low real transaction test run karo
-4. Razorpay dashboard + site DB dono match karo
+3. Price set karo (actual amount)
+4. Ek real transaction test run karo
+5. Razorpay dashboard + site DB dono match karo
 
 ---
 
@@ -226,7 +251,8 @@ Best for: lead magnet style free report page.
 Expected result:
 - Payment skip hoga
 - Selected language report generate hogi
-- PDF/email flow trigger hoga
+- Email bheja jaayega admin-configured template ke saath
+- **Email subject/body admin settings se aayega** (`{name}` auto-replace hoga)
 
 ## Method 6B (Advanced): Existing UI rakho, payment step skip karo
 
@@ -246,8 +272,8 @@ Example payload:
   action: 'nion_verify_and_save',
   nonce,
   booking_type: 'pdf',
-  date: '2026-02-17',
-  time: '10:30 AM',
+  date: '',
+  time: '',
   service: 'Kundali Report',
   duration: 0,
   price: 0,
@@ -324,7 +350,7 @@ async function saveBooking(ajaxUrl, payload) {
 }
 ```
 
-### 7.4 Elementor existing form integration (paid)
+### 7.4 Existing form integration (paid)
 1. Form submit event capture karo
 2. Fields read karo
 3. Config fetch karo
@@ -333,7 +359,7 @@ async function saveBooking(ajaxUrl, payload) {
 6. Success handler me `nion_verify_and_save` call karo
 7. `pdf_url` open karao
 
-### 7.5 Elementor existing form integration (without payment)
+### 7.5 Existing form integration (without payment)
 1. Form submit event capture karo
 2. Config fetch karo
 3. Direct `nion_verify_and_save` call karo
@@ -345,7 +371,7 @@ async function saveBooking(ajaxUrl, payload) {
 
 ## 8.1 Paid mode test checklist
 1. Frontend page open hota hai
-2. Service/date/time choose hota hai
+2. Language choose hota hai
 3. Details validation sahi chalti hai
 4. Razorpay popup open hota hai
 5. Payment success callback hit hota hai
@@ -353,7 +379,7 @@ async function saveBooking(ajaxUrl, payload) {
 7. PDF URL milta hai
 8. PDF open/download hoti hai
 9. Booking DB entry create hoti hai
-10. Email deliver hoti hai
+10. Email deliver hoti hai (configured template ke saath)
 
 ## 8.2 Free mode test checklist
 1. Form bina payment submit hota hai
@@ -362,18 +388,26 @@ async function saveBooking(ajaxUrl, payload) {
 4. PDF URL usable hota hai
 5. Email receive hoti hai
 
-## 8.3 Existing form integration checklist
-1. Field mapping complete hai
-2. Nonce always fresh hai
-3. Required payload keys miss nahi ho rahe
-4. Browser console me JS errors nahi hain
-5. Network tab me AJAX status 200 aa raha hai
+## 8.3 Admin dashboard test checklist
+1. Dashboard loads without errors
+2. Stats cards show correct data
+3. Bookings table shows all bookings
+4. **View button** opens booking details modal
+5. **Delete button** removes booking with confirmation
+6. CSV export works
+7. Search and date filters work
+
+## 8.4 Settings test checklist
+1. All fields save correctly
+2. **Logo preview** shows after selecting an image
+3. **Email template** fields accept HTML and `{name}` placeholder
+4. Price change reflects in frontend payment amount
 
 ---
 
 ## 9) Common Errors + Exact Fix
 
-### Error 1: PDF blank ya “Section” heading aa rahi hai
+### Error 1: PDF blank ya "Section" heading aa rahi hai
 Cause:
 - Language data structure malformed hai
 
@@ -413,14 +447,26 @@ Fix:
 1. SMTP plugin install/configure karo
 2. Test mail send karo
 3. Spam folder check karo
+4. Admin settings mein email template check karo
 
 ### Error 5: PDF generate nahi ho rahi
 Cause:
-- Upload permission issue
+- Upload permission issue ya mPDF error
 
 Fix:
 1. `wp-content/uploads/gem-astrology-reports/` writable karo
 2. PHP error logs check karo
+3. PHP `mbstring` extension enabled karo
+4. `includes/vendor/mpdf/` folder exists karo
+
+### Error 6: Logo PDF mein nahi dikh raha
+Cause:
+- Logo URL invalid ya file accessible nahi hai
+
+Fix:
+1. Settings mein logo select karo via "Select Logo" button
+2. Preview dekh kar confirm karo
+3. Ensure URL publicly accessible hai
 
 ---
 
@@ -429,11 +475,14 @@ Fix:
 Go-live se pehle:
 - [ ] Full site backup liya
 - [ ] Test mode se live key switch verify kiya
+- [ ] **Price set kiya** (`gem_astro_pdf_price` in admin settings)
+- [ ] **Email template customize kiya** (subject + body)
+- [ ] **Logo uploaded** and preview verified
+- [ ] **Branding info filled** (name, tagline, website, phone, email)
 - [ ] One live payment transaction tested
 - [ ] DB entry + PDF + email all verified
 - [ ] SMTP stable hai
-- [ ] Error logging ON hai
-- [ ] Admin alerts configured hain
+- [ ] Error logging ON hai (`WP_DEBUG_LOG = true`)
 
 Recommended production strategy:
 - Paid consultation/order pages: Razorpay mode
@@ -446,16 +495,25 @@ Recommended production strategy:
 
 Core files:
 - `gem-astrology-plugin.php` (hooks + AJAX registration)
-- `includes/class-gem-astro-pdf.php` (PDF generation)
-- `includes/class-gem-astro-db.php` (bookings table)
+- `includes/class-gem-astro-pdf.php` (mPDF PDF generation)
+- `includes/class-gem-astro-admin.php` (admin panel + settings + bookings)
+- `includes/class-gem-astro-db.php` (bookings table CRUD)
 - `includes/send-report.php` (free direct report flow)
 - `templates/booking-form.php` (default shortcode UI)
+- `uninstall.php` (cleanup on uninstall)
 
 Useful AJAX actions:
 - `nion_get_booking_config`
 - `nion_create_rzp_order`
 - `nion_verify_and_save`
 - `get_booked_slots`
+- `gem_astro_get_report`
+
+Admin-only AJAX actions:
+- `gem_astro_export_csv`
+- `gem_astro_get_chart_data`
+- `gem_astro_delete_booking`
+- `gem_astro_get_booking_details`
 
 ---
 
@@ -468,4 +526,16 @@ If you are...
 
 ---
 
-Agar aap chaho, next step mein main isi guide ke based aapke exact form fields ke liye ek ready-to-use final integration script bhi bana dunga (paid ya free mode dono ke liye).
+## 13) Plugin Uninstall
+
+Plugin delete karne par yeh sab automatically clean hota hai:
+- ✅ Saare plugin options (`gem_astro_*`)
+- ✅ Database table (`wp_gem_astro_bookings`)
+- ✅ Uploaded PDF files
+- ✅ Scheduled cron jobs
+
+> **Note:** Yeh sirf tab hota hai jab plugin ko WordPress admin se "Delete" karo. Deactivate karne se data safe rehta hai.
+
+---
+
+**Built with ❤️ by Trikrypta**

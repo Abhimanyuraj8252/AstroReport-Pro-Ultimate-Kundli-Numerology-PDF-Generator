@@ -252,6 +252,21 @@ class GemAstroDB
     }
 
     /**
+     * Delete a booking by ID
+     */
+    public static function delete_booking($id)
+    {
+        global $wpdb;
+        $table_name = self::get_table_name();
+
+        return $wpdb->delete(
+            $table_name,
+            ['id' => $id],
+            ['%d']
+        );
+    }
+
+    /**
      * Get recent bookings for activity feed
      */
     public static function get_recent_bookings($limit = 5)

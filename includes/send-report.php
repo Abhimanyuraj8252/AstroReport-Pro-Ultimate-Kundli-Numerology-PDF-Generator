@@ -111,11 +111,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!empty($selected_attachment)) {
         // Send one email with selected language attachment
         $to = $email;
-        $subject = '🌟 Your Personalized GEM Astrology Report';
-        $body = "<h1>Namaste $name,</h1>";
-        $body .= "<p>Thank you for choosing Nion Gem Astro. Your personalized astrology report is attached in your selected language.</p>";
-        $body .= "<p><strong>Note:</strong> Save these files for future reference.</p>";
-        $body .= "<p>Regards,<br>Team Nion Gem Astro</p>";
+
+        // Use configured email template or defaults
+        $default_subject = '🌟 Your Personalized GEM Astrology Report';
+        $default_body = "<h1>Namaste {name},</h1><p>Thank you for choosing Nion Gem Astro. Your personalized astrology report is attached in your selected language.</p><p><strong>Note:</strong> Save these files for future reference.</p><p>Regards,<br>Team Nion Gem Astro</p>";
+
+        if (function_exists('get_option')) {
+            $subject = get_option('gem_astro_email_subject', $default_subject);
+            $body = get_option('gem_astro_email_body', $default_body);
+        } else {
+            $subject = $default_subject;
+            $body = $default_body;
+        }
+
+        // Replace {name} placeholder
+        $subject = str_replace('{name}', $name, $subject);
+        $body = str_replace('{name}', $name, $body);
 
         $headers = ['Content-Type: text/html; charset=UTF-8'];
 
