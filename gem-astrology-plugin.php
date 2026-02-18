@@ -211,9 +211,14 @@ class GemAstrologyPlugin
             'amount' => floatval($_POST['price']),
             'language' => $selected_language
         ];
+        // Ensure table exists before inserting
+        GemAstroDB::create_table();
 
         $booking_id = GemAstroDB::insert_booking($booking_data);
 
+        if (!$booking_id) {
+            error_log('GemAstro: insert_booking failed. Data: ' . print_r($booking_data, true));
+        }
         if ($booking_id) {
             $pdf_url = '';
 
@@ -338,7 +343,10 @@ class GemAstrologyPlugin
 
             wp_send_json_success(['message' => 'Booking confirmed', 'pdf_url' => $pdf_url]);
         } else {
-            wp_send_json_error(['message' => 'Failed to save booking']);
+            global $wpdb;
+            $db_error = $wpdb->last_error;
+            error_log('GemAstro: Failed to save booking. DB Error: ' . $db_error);
+            wp_send_json_error(['message' => 'Failed to save booking. Please contact support.']);
         }
     }
 

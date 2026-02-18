@@ -685,9 +685,8 @@ $initial_price = isset($services[0]['price']) ? $services[0]['price'] : $price;
                 data.append('booking_type', userData.service_type || 'pdf');
                 data.append('price', GEM_PRICE);
                 data.append('language', userData.language);
-                data.append('notes', '');
                 data.append('date', '');
-                data.append('time', '');
+                data.append('notes', '');
                 return data;
             })
                 .then(res => {

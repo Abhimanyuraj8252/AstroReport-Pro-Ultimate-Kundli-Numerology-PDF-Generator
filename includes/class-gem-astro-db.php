@@ -24,25 +24,31 @@ class GemAstroDB
         $sql = "CREATE TABLE $table_name (
             id int(11) NOT NULL AUTO_INCREMENT,
             created_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
-            name tinytext NOT NULL,
-            phone tinytext NOT NULL,
-            email tinytext NOT NULL,
-            dob tinytext NOT NULL,
-            notes text DEFAULT '',
-            service_type tinytext NOT NULL,
-            date tinytext,
-            time tinytext,
-            place tinytext,
-            payment_id tinytext NOT NULL,
-            payment_status tinytext NOT NULL,
+            name varchar(255) NOT NULL,
+            phone varchar(50) NOT NULL,
+            email varchar(255) NOT NULL,
+            dob varchar(50) NOT NULL,
+            notes text NOT NULL,
+            service_type varchar(100) NOT NULL,
+            date varchar(50) DEFAULT '' NOT NULL,
+            time varchar(50) DEFAULT '' NOT NULL,
+            place varchar(255) DEFAULT '' NOT NULL,
+            payment_id varchar(255) NOT NULL,
+            payment_status varchar(50) NOT NULL,
             amount float NOT NULL,
-            language tinytext NOT NULL DEFAULT 'hi',
-            pdf_generated boolean DEFAULT 0,
+            language varchar(10) NOT NULL DEFAULT 'hi',
+            pdf_generated tinyint(1) DEFAULT 0 NOT NULL,
             PRIMARY KEY  (id)
         ) $charset_collate;";
 
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
         dbDelta($sql);
+
+        // Fallback: If dbDelta silently failed, try direct CREATE TABLE
+        if ($wpdb->get_var("SHOW TABLES LIKE '$table_name'") != $table_name) {
+            $wpdb->query($sql);
+            error_log("GemAstro: dbDelta failed, used direct CREATE TABLE for $table_name");
+        }
     }
 
     public static function insert_booking($data)
