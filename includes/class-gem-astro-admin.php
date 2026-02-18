@@ -31,6 +31,8 @@ class GemAstroAdmin
         add_action('wp_ajax_gem_astro_get_booking_details', [$this, 'ajax_get_booking_details']);
         // AJAX: Filter Bookings
         add_action('wp_ajax_gem_astro_filter_bookings', [$this, 'ajax_filter_bookings']);
+        // AJAX: Get Revenue Chart
+        add_action('wp_ajax_gem_astro_get_revenue_chart', [$this, 'ajax_get_revenue_chart']);
 
         // Schedule Cron
         if (!wp_next_scheduled('gem_astro_daily_cleanup')) {
@@ -268,6 +270,65 @@ class GemAstroAdmin
         }
         $html = ob_get_clean();
         wp_send_json_success(['html' => $html]);
+    }
+
+    /**
+     * AJAX: Get Revenue Chart Data (Dynamic Navigation)
+     */
+    public function ajax_get_revenue_chart()
+    {
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error();
+        }
+
+        $offset = isset($_POST['offset']) ? intval($_POST['offset']) : 0;
+
+        // Calculate 7-day window based on offset
+        // Offset 0 = Last 7 days (including today)
+        // Offset -1 = Previous 7 days
+        $end_timestamp = strtotime(($offset * 7) . " days");
+        $start_timestamp = strtotime("-6 days", $end_timestamp);
+
+        $end_date = date('Y-m-d', $end_timestamp);
+        $start_date = date('Y-m-d', $start_timestamp);
+
+        $label = date('M j', $start_timestamp) . ' - ' . date('M j', $end_timestamp);
+        if ($offset === 0) {
+            $label = 'Last 7 Days';
+        }
+
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'gem_astro_bookings';
+
+        $sql = $wpdb->prepare("
+            SELECT DATE(created_at) as date, SUM(amount) as total
+            FROM $table_name
+            WHERE status = 'paid'
+            AND DATE(created_at) BETWEEN %s AND %s
+            GROUP BY DATE(created_at)
+        ", $start_date, $end_date);
+
+        $results = $wpdb->get_results($sql, ARRAY_A);
+
+        // Fill in missing dates with 0
+        $chart_data = [];
+        $current = $start_timestamp;
+        while ($current <= $end_timestamp) {
+            $d = date('Y-m-d', $current);
+            $chart_data[$d] = 0;
+            $current = strtotime('+1 day', $current);
+        }
+
+        if ($results) {
+            foreach ($results as $row) {
+                $chart_data[$row['date']] = (float) $row['total'];
+            }
+        }
+
+        wp_send_json_success([
+            'chart' => $chart_data,
+            'label' => $label
+        ]);
     }
 
     /**
@@ -576,17 +637,17 @@ class GemAstroAdmin
                 <!-- Revenue Chart -->
                 <div class="ga-card ga-chart-card">
                     <div class="ga-card-header">
-                        <h3>📈 Revenue — Last 7 Days</h3>
+                        <h3>📈 Revenue <span class="ga-live-badge"><span class="ga-live-dot"></span> Live</span></h3>
+                        <div class="ga-chart-nav">
+                            <button type="button" class="ga-btn-icon ga-nav-btn" onclick="navigateChart(-1)"
+                                title="Previous Period">◀</button>
+                            <span id="ga-chart-label" class="ga-chart-period">Last 7 Days</span>
+                            <button type="button" class="ga-btn-icon ga-nav-btn" onclick="navigateChart(1)"
+                                title="Next Period">▶</button>
+                        </div>
                     </div>
                     <div class="ga-chart" id="ga-chart">
-                        <?php foreach ($chart_data as $date => $amount): ?>
-                            <div class="ga-chart-bar-wrap">
-                                <div class="ga-chart-amount">₹<?php echo number_format($amount, 0); ?></div>
-                                <div class="ga-chart-bar" style="height: <?php echo max(($amount / $max_revenue) * 100, 4); ?>%;">
-                                </div>
-                                <div class="ga-chart-label"><?php echo date('d M', strtotime($date)); ?></div>
-                            </div>
-                        <?php endforeach; ?>
+                        <!-- Chart renders here -->
                     </div>
                 </div>
 
@@ -696,8 +757,7 @@ class GemAstroAdmin
 
                     <div class="ga-table-filters"
                         style="display:flex;gap:10px;flex:1;justify-content:flex-end;align-items:center;">
-                        <select id="ga-bookings-range" class="ga-select ga-select-small"
-                            style="background:rgba(255,255,255,0.1);color:#fff;border:1px solid rgba(255,255,255,0.1);border-radius:4px;padding:4px 8px;">
+                        <select id="ga-bookings-range" class="ga-select ga-select-small">
                             <option value="all">All Time</option>
                             <option value="today">Today</option>
                             <option value="7d">Last 7 Days</option>
@@ -710,8 +770,7 @@ class GemAstroAdmin
                             <option value="5y">Last 5 Years</option>
                             <option value="10y">Last 10 Years</option>
                         </select>
-                        <select id="ga-bookings-sort" class="ga-select ga-select-small"
-                            style="background:rgba(255,255,255,0.1);color:#fff;border:1px solid rgba(255,255,255,0.1);border-radius:4px;padding:4px 8px;">
+                        <select id="ga-bookings-sort" class="ga-select ga-select-small">
                             <option value="date">Newest First</option>
                             <option value="date_asc">Oldest First</option>
                             <option value="amount_high">Amount (High -> Low)</option>
@@ -719,9 +778,9 @@ class GemAstroAdmin
                             <option value="name">Name (A-Z)</option>
                         </select>
                         <input type="text" id="ga-bookings-search" placeholder="Search..." class="ga-input ga-input-small"
-                            style="width:150px;padding:4px 8px;font-size:13px;">
+                            style="width:150px;">
                         <button type="button" class="ga-btn ga-btn-primary" onclick="filterBookings()"
-                            style="padding:4px 10px;font-size:12px;height:auto;">Apply</button>
+                            style="padding:6px 14px;font-size:12px;height:auto;">Apply</button>
                     </div>
                 </div>
                 <div class="ga-table-wrap">
@@ -738,7 +797,7 @@ class GemAstroAdmin
                                 <th>Actions</th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody id="ga-bookings-body">
                             <?php if (empty($bookings)): ?>
                                 <tr>
                                     <td colspan="8" class="ga-empty-state">
@@ -917,8 +976,17 @@ class GemAstroAdmin
         <script>
             (function () {
                 var ajaxUrl = '<?php echo admin_url("admin-ajax.php"); ?>';
+                var chartOffset = 0;
+
+                // Helper to get element
+                var el = function (id) { return document.getElementById(id); };
+
+                // 1. Refresh Stats (Top Cards)
                 window.refreshStats = function () {
-                    var range = document.getElementById('ga-stats-range').value;
+                    // Only refresh live stats if we are fully "live" (chart offset 0)
+                    // limit unnecessary calls if user is deep in history, though stats are usually global.
+                    // Let's keep stats global for now.
+
                     var xhr = new XMLHttpRequest();
                     xhr.open('POST', ajaxUrl, true);
                     xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
@@ -928,82 +996,145 @@ class GemAstroAdmin
                                 var r = JSON.parse(xhr.responseText);
                                 if (r.success && r.data) {
                                     var s = r.data.stats;
-                                    var el = function (id) { return document.getElementById(id); };
+
                                     if (el('ga-stat-today')) el('ga-stat-today').textContent = s.today;
                                     if (el('ga-stat-total')) el('ga-stat-total').textContent = s.total;
 
-                                    // Properly format revenue
-                                    var rev = Number(s.revenue_filtered || s.revenue); // Use filtered revenue if available, else total
-                                    // Actually, get_advanced_stats returns strict period revenue separately? 
-                                    // The PHP structure is: 'revenue' => total_revenue (usually). 
-                                    // Let's check get_advanced_stats. It returns 'revenue' (filtered sum) and 'revenue_chart'.
-                                    // So s.revenue IS the filtered revenue.
-                                    if (el('ga-stat-revenue')) el('ga-stat-revenue').textContent = '₹' + Number(s.revenue).toLocaleString('en-IN');
+                                    // Animate Revenue Count
+                                    if (el('ga-stat-revenue')) {
+                                        // simple text update for now, maybe number ticker later if requested
+                                        el('ga-stat-revenue').textContent = '₹' + Number(s.revenue).toLocaleString('en-IN');
+                                    }
 
                                     if (el('ga-stat-pdf')) el('ga-stat-pdf').textContent = s.pdf_count;
                                     if (el('ga-stat-consult')) el('ga-stat-consult').textContent = s.consultation_count;
                                     if (el('ga-stat-rate')) el('ga-stat-rate').textContent = s.success_rate + '%';
-                                    if (el('ga-last-updated')) el('ga-last-updated').textContent = 'Updated: ' + r.data.time;
 
-                                    // Update Chart
-                                    if (s.revenue_chart) {
+                                    // Only update chart automatically if we are in "Live" mode (offset 0)
+                                    if (chartOffset === 0 && s.revenue_chart) {
                                         updateChart(s.revenue_chart);
                                     }
 
                                     // Pulse the live badge
-                                    var badge = el('ga-live-badge');
-                                    if (badge) { badge.classList.remove('ga-pulse'); void badge.offsetWidth; badge.classList.add('ga-pulse'); }
+                                    var badge = document.querySelector('.ga-live-dot');
+                                    if (badge) {
+                                        badge.style.animation = 'none';
+                                        badge.offsetHeight; /* trigger reflow */
+                                        badge.style.animation = 'ga-blink 1.5s ease-in-out infinite';
+                                    }
                                 }
                             } catch (e) { console.error(e); }
                         }
                     };
-                    xhr.send('action=gem_astro_live_stats&range=' + range);
-                }
+                    xhr.send('action=gem_astro_live_stats');
+                };
 
+                // 2. Update Chart DOM
                 function updateChart(data) {
-                    var container = document.getElementById('ga-chart');
+                    var container = el('ga-chart');
                     if (!container) return;
 
-                    // Convert object to array and sort by date key just in case
-                    var entries = Object.entries(data); // [['2024-02-18', 100], ...]
-                    // Find max for scaling
+                    var entries = Object.entries(data);
+                    // entries: [['2024-02-18', 100], ...]
+
+                    if (entries.length === 0) {
+                        container.innerHTML = '<div class="ga-chart-empty">No data</div>';
+                        return;
+                    }
+
+                    // Calculate Max for scaling
                     var max = 0;
-                    entries.forEach(function (e) { if (Number(e[1]) > max) max = Number(e[1]); });
-                    if (max === 0) max = 1;
-
-                    var html = '';
                     entries.forEach(function (e) {
-                        var dateStr = e[0]; // YYYY-MM-DD
-                        var amount = Number(e[1]);
-                        var height = Math.max((amount / max) * 100, 4);
+                        var val = Number(e[1]);
+                        if (val > max) max = val;
+                    });
+                    if (max === 0) max = 1; // avoid divide by zero
 
-                        // Format Date (e.g., 18 Feb)
+                    // Build HTML
+                    var html = '';
+                    entries.forEach(function (e, index) {
+                        var dateStr = e[0];
+                        var amount = Number(e[1]);
+                        // Minimum height 6% so bar is visible even if 0 (for visuals) or very small
+                        var height = amount === 0 ? 2 : Math.max((amount / max) * 100, 6);
+
+                        // Format Date
                         var d = new Date(dateStr);
                         var day = d.getDate();
                         var month = d.toLocaleString('default', { month: 'short' });
                         var label = day + ' ' + month;
 
+                        // Staggered animation delay
+                        var delay = index * 0.05;
+
                         html += '<div class="ga-chart-bar-wrap">';
                         html += '<div class="ga-chart-amount">₹' + amount.toLocaleString('en-IN') + '</div>';
-                        html += '<div class="ga-chart-bar" style="height: ' + height + '%;"></div>';
+                        html += '<div class="ga-chart-bar" style="height: ' + height + '%; animation-delay: ' + delay + 's"></div>';
                         html += '<div class="ga-chart-label">' + label + '</div>';
                         html += '</div>';
                     });
                     container.innerHTML = html;
                 }
 
-                // Initial Load
-                refreshStats();
-                setInterval(refreshStats, 30000);
+                // 3. Chart Navigation
+                window.navigateChart = function (dir) {
+                    chartOffset += dir;
+                    updateLiveBadgeState();
+                    updateChartData();
+                };
 
-                // Bookings Filter
+                function updateLiveBadgeState() {
+                    var badge = document.querySelector('.ga-live-badge');
+                    if (!badge) return;
+
+                    if (chartOffset === 0) {
+                        badge.style.opacity = '1';
+                        // badge.innerHTML = '<span class="ga-live-dot"></span> Live';
+                        badge.querySelector('.ga-live-dot').style.display = 'inline-block';
+                        badge.childNodes[1].textContent = ' Live'; // delicate, depends on structure
+                    } else {
+                        badge.style.opacity = '0.5';
+                        badge.querySelector('.ga-live-dot').style.display = 'none';
+                        // badge.innerHTML = 'History';
+                        badge.childNodes[1].textContent = ' History';
+                    }
+                }
+
+                function updateChartData() {
+                    var container = el('ga-chart');
+                    container.style.opacity = '0.6';
+
+                    var xhr = new XMLHttpRequest();
+                    xhr.open('POST', ajaxUrl, true);
+                    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+                    xhr.onload = function () {
+                        if (xhr.status === 200) {
+                            try {
+                                var r = JSON.parse(xhr.responseText);
+                                if (r.success) {
+                                    updateChart(r.data.chart);
+                                    el('ga-chart-label').textContent = r.data.label;
+                                }
+                            } catch (e) { }
+                        }
+                        container.style.opacity = '1';
+                    };
+                    xhr.send('action=gem_astro_get_revenue_chart&offset=' + chartOffset);
+                }
+
+                // 4. Booking Filters
                 window.filterBookings = function () {
-                    var range = document.getElementById('ga-bookings-range').value;
-                    var sort = document.getElementById('ga-bookings-sort').value;
-                    var search = document.getElementById('ga-bookings-search').value;
+                    var range = el('ga-bookings-range') ? el('ga-bookings-range').value : '';
+                    var sort = el('ga-bookings-sort') ? el('ga-bookings-sort').value : '';
+                    var search = el('ga-bookings-search') ? el('ga-bookings-search').value : '';
 
-                    var tbody = document.getElementById('ga-bookings-body');
+                    var tbody = el('ga-bookings-body');
+                    if (!tbody) return;
+
+                    // Add loading skeleton or opacity
                     tbody.style.opacity = '0.5';
+                    tbody.style.transform = 'scale(0.995)';
+                    tbody.style.transition = 'all 0.2s';
 
                     var xhr = new XMLHttpRequest();
                     xhr.open('POST', ajaxUrl, true);
@@ -1018,9 +1149,15 @@ class GemAstroAdmin
                             } catch (e) { }
                         }
                         tbody.style.opacity = '1';
+                        tbody.style.transform = 'scale(1)';
                     };
                     xhr.send('action=gem_astro_filter_bookings&range=' + range + '&sort_by=' + sort + '&search=' + search);
                 };
+
+                // Init
+                refreshStats();
+                updateChartData();
+                setInterval(refreshStats, 30000); // Auto-refresh every 30s
             })();
         </script>
         <?php echo $this->get_logo_picker_script(); ?>
@@ -1720,12 +1857,18 @@ class GemAstroAdmin
 
         /* ====== CARDS (generic) ====== */
         .ga-card {
-            background: rgba(255,255,255,0.04);
-            border: 1px solid rgba(255,255,255,0.06);
-            border-radius: 18px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 20px;
             padding: 24px;
-            backdrop-filter: blur(12px);
-            margin-bottom: 20px;
+            backdrop-filter: blur(16px);
+            margin-bottom: 24px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.1);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .ga-card:hover {
+            box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+            border-color: rgba(255,255,255,0.12);
         }
         .ga-card-header {
             display: flex;
@@ -1752,9 +1895,10 @@ class GemAstroAdmin
         .ga-chart {
             display: flex;
             align-items: flex-end;
-            gap: 8px;
-            height: 180px;
+            gap: 12px;
+            height: 200px;
             padding-top: 10px;
+            padding-bottom: 10px;
         }
         .ga-chart-bar-wrap {
             flex: 1;
@@ -1772,12 +1916,24 @@ class GemAstroAdmin
         }
         .ga-chart-bar {
             width: 100%;
-            max-width: 50px;
-            background: linear-gradient(180deg, #F5A623, #ff6b35);
-            border-radius: 8px 8px 4px 4px;
-            min-height: 4px;
-            transition: height 0.6s ease;
-            box-shadow: 0 0 16px rgba(245,166,35,0.2);
+            max-width: 40px;
+            background: linear-gradient(180deg, #F5A623 0%, #ff6b35 100%);
+            border-radius: 20px 20px 6px 6px;
+            min-height: 6px;
+            transition: height 0.8s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s;
+            box-shadow: 0 4px 12px rgba(245,166,35,0.3);
+            position: relative;
+            overflow: hidden;
+        }
+        .ga-chart-bar::after {
+            content: "";
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: linear-gradient(180deg, rgba(255,255,255,0.2) 0%, transparent 100%);
+        }
+        .ga-chart-bar:hover {
+            box-shadow: 0 0 20px rgba(245,166,35,0.5);
+            transform: scaleY(1.02);
         }
         .ga-chart-label {
             font-size: 10px;
@@ -2028,12 +2184,17 @@ class GemAstroAdmin
         .ga-btn-icon {
             background: rgba(255,255,255,0.06);
             border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 6px;
+            border-radius: 10px;
             color: rgba(255,255,255,0.7);
             cursor: pointer;
-            padding: 6px;
-            font-size: 14px;
-            transition: all 0.2s;
+            padding: 8px;
+            font-size: 16px;
+            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            display: inline-flex;
+            align-items: center; justify-content: center;
+        }
+        .ga-nav-btn {
+            width: 32px; height: 32px; border-radius: 50%;
         }
         .ga-btn-icon:hover {
             background: rgba(255,255,255,0.15);
@@ -2066,7 +2227,7 @@ class GemAstroAdmin
         /* Empty State */
         .ga-empty-state { text-align: center; padding: 60px 20px !important; }
         .ga-empty-icon { font-size: 48px; margin-bottom: 12px; }
-        .ga-empty-text { font-size: 16px; font-weight: 700; color: rgba(255,255,255,0.6); margin-bottom: 6px; }
+        .ga-empty-text { font-size: 18px; font-weight: 700; color: #fff; margin-bottom: 8px; }
         .ga-empty-sub { font-size: 13px; color: rgba(255,255,255,0.3); }
 
         /* Row Animation */

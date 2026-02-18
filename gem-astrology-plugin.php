@@ -205,6 +205,7 @@ class GemAstrologyPlugin
             'service_type' => sanitize_text_field($_POST['booking_type']),
             'date' => sanitize_text_field($_POST['date'] ?? ''),
             'time' => sanitize_text_field($_POST['time'] ?? ''),
+            'place' => sanitize_text_field($_POST['place'] ?? ''),
             'payment_id' => $rzp_payment_id,
             'payment_status' => 'paid',
             'amount' => floatval($_POST['price']),
@@ -251,11 +252,11 @@ class GemAstrologyPlugin
 
                 $pdf_url = $main_pdf_url;
 
-                // Send email with ALL generated PDFs
+                // Send email with ALL generated PDFs to USER
                 if (!empty($generated_pdfs) && !empty($booking_data['email'])) {
                     $to = $booking_data['email'];
 
-                    // Use configured email template or defaults
+                    // User Email Content
                     $default_subject = '🌟 Your Personalized AstroReport Pro Report';
                     $default_body = '<h1>Namaste {name},</h1><p>Thank you for choosing AstroReport Pro. Your personalized astrology report is attached in English, Hindi, and Gujarati.</p><p><strong>Note:</strong> Save these files for future reference.</p><p>Regards,<br>Team Trikrypta</p>';
 
@@ -266,17 +267,31 @@ class GemAstrologyPlugin
                     $subject = str_replace('{name}', esc_html($booking_data['name']), $subject);
                     $body = str_replace('{name}', esc_html($booking_data['name']), $body);
 
-                    $headers = [];
-                    $headers[] = 'Content-Type: text/html; charset=UTF-8';
+                    $headers = ['Content-Type: text/html; charset=UTF-8'];
 
-                    // Add Admin Email to Bcc
-                    $admin_email = get_option('gem_astro_contact_email', '');
-                    if (!empty($admin_email) && is_email($admin_email)) {
-                        $headers[] = 'Bcc: ' . $admin_email;
+                    // Send to User
+                    $sent_user = wp_mail($to, $subject, $body, $headers, $generated_pdfs);
+
+                    if (!$sent_user) {
+                        error_log("GemAstro: Failed to send PDF email to user: " . $to);
                     }
+                }
 
-                    // Attach all 3 files
-                    wp_mail($to, $subject, $body, $headers, $generated_pdfs);
+                // Send separate email to ADMIN
+                $admin_email = get_option('gem_astro_contact_email', '');
+                if (!empty($admin_email) && is_email($admin_email)) {
+                    $admin_subject = 'New Booking: PDF Report Generated - ' . esc_html($booking_data['name']);
+                    $admin_body = '<h1>New Booking Received</h1>';
+                    $admin_body .= '<p><strong>Name:</strong> ' . esc_html($booking_data['name']) . '</p>';
+                    $admin_body .= '<p><strong>Email:</strong> ' . esc_html($booking_data['email']) . '</p>';
+                    $admin_body .= '<p><strong>Phone:</strong> ' . esc_html($booking_data['phone']) . '</p>';
+                    $admin_body .= '<p><strong>Amount:</strong> ' . esc_html($booking_data['amount']) . '</p>';
+                    $admin_body .= '<p>The generated reports are attached.</p>';
+
+                    $admin_headers = ['Content-Type: text/html; charset=UTF-8'];
+
+                    // Send to Admin
+                    wp_mail($admin_email, $admin_subject, $admin_body, $admin_headers, $generated_pdfs);
                 }
             } else {
                 // Handle Non-PDF Services (e.g., Consultation)

@@ -53,7 +53,9 @@ $booking_data = [
     'email' => 'test@example.com',
     'phone' => '1234567890',
     'price' => '499',
-    'service_type' => 'pdf'
+    'service_type' => 'pdf',
+    'time' => '14:30',
+    'place' => 'New Delhi, India'
 ];
 
 $languages = ['en', 'hi', 'gu'];

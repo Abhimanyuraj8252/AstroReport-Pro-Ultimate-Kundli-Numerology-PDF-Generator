@@ -32,6 +32,7 @@ class GemAstroDB
             service_type tinytext NOT NULL,
             date tinytext,
             time tinytext,
+            place tinytext,
             payment_id tinytext NOT NULL,
             payment_status tinytext NOT NULL,
             amount float NOT NULL,
@@ -53,7 +54,8 @@ class GemAstroDB
             'language' => 'hi',
             'notes' => '',
             'date' => '',
-            'time' => ''
+            'time' => '',
+            'place' => ''
         ];
 
         $data = array_merge($defaults, $data);
@@ -70,6 +72,7 @@ class GemAstroDB
                 'service_type' => $data['service_type'],
                 'date' => $data['date'],
                 'time' => $data['time'],
+                'place' => $data['place'],
                 'payment_id' => $data['payment_id'],
                 'payment_status' => $data['payment_status'],
                 'amount' => $data['amount'],

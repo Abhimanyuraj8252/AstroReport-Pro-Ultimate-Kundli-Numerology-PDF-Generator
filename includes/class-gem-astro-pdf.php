@@ -117,6 +117,9 @@ class GemAstroPDF
             // Render Cover Page
             self::renderCoverPage($mpdf, $name, $brand, $language);
 
+            // Render User Info Page
+            self::renderUserInfoPage($mpdf, $booking_data, $mulank, $langCode);
+
             // Render Content Pages (Continuous Flow)
             if (count($sections) > 0) {
                 self::renderContentPage($mpdf, $mulank, $sections, $brand, $langCode);
@@ -214,6 +217,7 @@ class GemAstroPDF
                 15,
                 20,
                 80,
+                220,
                 80,
                 'hidden'
             );
@@ -573,6 +577,304 @@ class GemAstroPDF
             'cover_logo' => $getOption('gem_astro_cover_logo', ''),
             'cover_welcome_text' => $getOption('gem_astro_cover_welcome_text', "Welcome To\nYour GEM\nASTROLOGY\nReport"),
         ];
+    }
+
+    private static function renderUserInfoPage($mpdf, $booking_data, $mulank, $langCode)
+    {
+        $mpdf->AddPage();
+
+        // Colors - Vibrant Premium Palette
+        $bgCream = '#FFF8E1'; // Soft Cream Background
+
+        // Requested Vibrant Colors
+        $cOrange = '#F25C2A'; // Red-Orange
+        $cBlue = '#2063AA';   // Strong Blue
+        $cYellow = '#F5B436'; // Gold/Yellow
+        $cRed = '#EF4444';    // Vibrant Red
+        $cNavy = '#1C2E40';   // Dark Blue/Navy for Contrast
+        $cWhite = '#FFFFFF';
+
+        // Data Processing
+        $name = isset($booking_data['name']) ? $booking_data['name'] : '';
+        $phone = isset($booking_data['phone']) ? $booking_data['phone'] : '';
+        $email = isset($booking_data['email']) ? $booking_data['email'] : '';
+
+        $dobRaw = isset($booking_data['dob']) ? $booking_data['dob'] : '';
+        $dob = $dobRaw ? date('d-m-Y', strtotime($dobRaw)) : ''; // Format: dd-mm-yyyy
+
+        $time = isset($booking_data['time']) ? $booking_data['time'] : '';
+        $place = isset($booking_data['place']) ? $booking_data['place'] : '';
+
+        // Language Label
+        $langLabel = 'English';
+        if ($langCode === 'hi')
+            $langLabel = 'हिंदी';
+        if ($langCode === 'gu')
+            $langLabel = 'ગુજરાતી';
+
+        // Labels Translation
+        $l = [
+            'name' => 'Name',
+            'phone' => 'Mobile',
+            'email' => 'Email',
+            'dob' => 'Date of Birth',
+            'time' => 'Time of Birth',
+            'place' => 'Place of Birth',
+            'lang' => 'Language',
+            'mulank' => 'Mulank',
+            'intro' => 'Introduction',
+            'details' => 'USER DETAILS'
+        ];
+
+        if ($langCode === 'hi') {
+            $l = [
+                'name' => 'नाम',
+                'phone' => 'मोबाइल',
+                'email' => 'ईमेल',
+                'dob' => 'जन्म तिथि',
+                'time' => 'जन्म समय',
+                'place' => 'जन्म स्थान',
+                'lang' => 'भाषा',
+                'mulank' => 'मूलांक',
+                'intro' => 'परिचय',
+                'details' => 'उपयोगकर्ता विवरण'
+            ];
+        } elseif ($langCode === 'gu') {
+            $l = [
+                'name' => 'નામ',
+                'phone' => 'મોબાઇલ',
+                'email' => 'ઇમેઇલ',
+                'dob' => 'જન્મ તારીખ',
+                'time' => 'જન્મ સમય',
+                'place' => 'જન્મ સ્થળ',
+                'lang' => 'ભાષા',
+                'mulank' => 'મૂલાંક',
+                'intro' => 'પરિચય',
+                'details' => 'વપરાશકર્તા વિગતો'
+            ];
+        }
+
+        // --- DESIGN IMPLEMENTATION ---
+
+        // 1. Full Page Background
+        $mpdf->WriteFixedPosHTML(
+            '<div style="background-color:' . $bgCream . ';width:100%;height:100%"></div>',
+            0,
+            0,
+            210,
+            297,
+            'hidden'
+        );
+
+        // 2. Subtle Watermark (Top Right)
+        // A single large faint gold circle for elegance
+        $mpdf->WriteFixedPosHTML(
+            '<div style="background-color: #F5B436; border-radius: 50%; width: 80mm; height: 80mm; opacity: 0.1;"></div>',
+            150,
+            -20,
+            80,
+            80,
+            'hidden'
+        );
+
+        // 3. User Details Card (Left - Premium "Floating" Card)
+
+        // Premium Navy Header for Card
+        $mpdf->WriteFixedPosHTML(
+            '<div style="background-color: #1C2E40; height: 12mm; width: 120mm; border-top-left-radius: 4mm; border-top-right-radius: 4mm; display: flex; align-items: center; border-bottom: 2px solid #D4AF37;">
+                <div style="color: #D4AF37; font-family: sans-serif; font-size: 11pt; font-weight: bold; text-transform: uppercase; padding-left: 5mm; padding-top: 2.5mm; letter-spacing: 1px;">' . $l['details'] . '</div>
+            </div>',
+            15,
+            65,
+            120,
+            12,
+            'hidden'
+        );
+
+        // Card Background (White with Gold Border)
+        $mpdf->WriteFixedPosHTML(
+            '<div style="background-color: #FFF; width: 120mm; height: 110mm; border-bottom-left-radius: 4mm; border-bottom-right-radius: 4mm; border: 1px solid #D4AF37; border-top: none;"></div>',
+            15,
+            77,
+            120,
+            110,
+            'hidden'
+        );
+
+        // Watermark / Accent inside the card (Subtle Geometric Pattern)
+        $mpdf->WriteFixedPosHTML(
+            '<div style="color: #F9F9F9; font-size: 150pt; opacity: 0.1; transform: rotate(-15deg);">✦</div>',
+            60,
+            90,
+            50,
+            50,
+            'hidden'
+        );
+
+        // Details Table - Clean & spaced with Golden Accents
+        $detailsHtml = '
+        <table style="font-family: sans-serif; color: #333; font-size: 11pt; width: 100%; border-collapse: separate; border-spacing: 0 4mm;">
+            <tr>
+                <td style="font-weight: bold; width: 35%; color: #8B4513; vertical-align: middle; padding-left: 5mm; text-transform: uppercase; font-size: 9pt;">' . $l['name'] . '</td>
+                <td style="font-weight: 600; width: 65%; color: #000; vertical-align: middle; border-bottom: 1px solid #F0E68C; padding-bottom: 2mm;">' . $name . '</td>
+            </tr>
+            <tr>
+                <td style="font-weight: bold; width: 35%; color: #8B4513; vertical-align: middle; padding-left: 5mm; text-transform: uppercase; font-size: 9pt;">' . $l['email'] . '</td>
+                <td style="font-weight: 600; width: 65%; color: #000; vertical-align: middle; border-bottom: 1px solid #F0E68C; padding-bottom: 2mm;">' . $email . '</td>
+            </tr>
+            <tr>
+                <td style="font-weight: bold; width: 35%; color: #8B4513; vertical-align: middle; padding-left: 5mm; text-transform: uppercase; font-size: 9pt;">' . $l['phone'] . '</td>
+                <td style="font-weight: 600; width: 65%; color: #000; vertical-align: middle; border-bottom: 1px solid #F0E68C; padding-bottom: 2mm;">' . $phone . '</td>
+            </tr>
+            <tr>
+                <td style="font-weight: bold; width: 35%; color: #8B4513; vertical-align: middle; padding-left: 5mm; text-transform: uppercase; font-size: 9pt;">' . $l['dob'] . '</td>
+                <td style="font-weight: 600; width: 65%; color: #000; vertical-align: middle; border-bottom: 1px solid #F0E68C; padding-bottom: 2mm;">' . $dob . '</td>
+            </tr>
+            <tr>
+                <td style="font-weight: bold; width: 35%; color: #8B4513; vertical-align: middle; padding-left: 5mm; text-transform: uppercase; font-size: 9pt;">' . $l['time'] . '</td>
+                <td style="font-weight: 600; width: 65%; color: #000; vertical-align: middle; border-bottom: 1px solid #F0E68C; padding-bottom: 2mm;">' . $time . '</td>
+            </tr>
+            <tr>
+                <td style="font-weight: bold; width: 35%; color: #8B4513; vertical-align: middle; padding-left: 5mm; text-transform: uppercase; font-size: 9pt;">' . $l['place'] . '</td>
+                <td style="font-weight: 600; width: 65%; color: #000; vertical-align: middle; border-bottom: 1px solid #F0E68C; padding-bottom: 2mm;">' . $place . '</td>
+            </tr>
+             <tr>
+                <td style="font-weight: bold; width: 35%; color: #8B4513; vertical-align: middle; padding-left: 5mm; text-transform: uppercase; font-size: 9pt;">' . $l['lang'] . '</td>
+                <td style="font-weight: 600; width: 65%; color: #000; vertical-align: middle; border-bottom: 1px solid #F0E68C; padding-bottom: 2mm;">' . $langLabel . '</td>
+            </tr>
+        </table>
+        ';
+
+        $mpdf->WriteFixedPosHTML(
+            $detailsHtml,
+            15,
+            82,
+            120,
+            90,
+            'hidden'
+        );
+
+        // Sidebar Mulank Display (Right Side of Card)
+        // A vertical colorful strip on the right
+
+        $mpdf->WriteFixedPosHTML(
+            '<div style="background-color:' . $cNavy . '; border-radius: 4mm; width: 40mm; height: 40mm; box-shadow: 2px 2px 10px rgba(0,0,0,0.1);"></div>',
+            150,
+            65,
+            40,
+            40,
+            'hidden'
+        );
+        $mpdf->WriteFixedPosHTML(
+            '<div style="text-align: center;">
+                <div style="font-size: 12pt; color: #FFF; margin-bottom: 2mm; margin-top: 3mm;">' . $l['mulank'] . '</div>
+                <div style="font-size: 40pt; font-weight: bold; color: ' . $cYellow . '; line-height: 1;">' . $mulank . '</div>
+            </div>',
+            150,
+            65,
+            40,
+            40,
+            'hidden'
+        );
+
+        // Brand Logo in its own colorful bubble below Mulank
+        $brand = self::getBrandConfig();
+        $logoPath = self::resolveBrandLogoPath((string) ($brand['cover_logo'] ?? ''));
+
+        if (!empty($logoPath) && file_exists($logoPath)) {
+            $mpdf->WriteFixedPosHTML(
+                '<div style="background-color:#FFF; border: 2px solid ' . $cOrange . '; border-radius: 50%; width: 40mm; height: 40mm;"></div>',
+                150,
+                115,
+                40,
+                40,
+                'hidden'
+            );
+            $mpdf->WriteFixedPosHTML(
+                '<div style="text-align:center;"><img src="' . $logoPath . '" style="width:30mm; height: auto;" /></div>',
+                155,
+                120,
+                30,
+                30,
+                'hidden'
+            );
+        }
+
+        // 4. Content / Intro Section (Bottom)
+
+        $introHeading = $l['intro'] . ' - ' . $l['mulank'] . ' ' . $mulank;
+
+        // Grab first section content for intro
+        $allData = self::getLanguageData($langCode);
+        $sections = isset($allData[$mulank]) && is_array($allData[$mulank]) ? $allData[$mulank] : [];
+        $introText = '';
+        if (!empty($sections)) {
+            $firstSection = $sections[0];
+            $content = self::pickSectionContent($firstSection['content'] ?? '');
+            $content = self::normalizeContentForLanguage($content, $langCode);
+            $introText = mb_strimwidth(strip_tags($content), 0, 700, "...");
+        }
+
+        if ($introText) {
+            // Styled Intro Box with colorful top border
+            $mpdf->WriteFixedPosHTML(
+                '<div style="background-color:' . $cBlue . '; width: 175mm; height: 2mm; border-top-left-radius: 4mm; border-top-right-radius: 4mm;"></div>',
+                15,
+                190,
+                175,
+                2,
+                'hidden'
+            );
+            $introHtml = '
+            <div style="background-color: #FFF; border: 1px solid #E5E7EB; border-bottom-left-radius: 4mm; border-bottom-right-radius: 4mm; padding: 5mm;">
+                <div style="color:' . $cOrange . '; font-weight:bold; font-size:12pt; margin-bottom: 2mm; text-transform:uppercase;">
+                    ' . $introHeading . '
+                </div>
+                <div style="font-size: 10pt; line-height: 1.6; color: #333; text-align: justify;">
+                    ' . $introText . '
+                </div>
+            </div>
+            ';
+
+            $mpdf->WriteFixedPosHTML(
+                $introHtml,
+                15,
+                192,
+                175,
+                80,
+                'hidden'
+            );
+        }
+
+        // 5. Vibrant Footer
+        // Bottom Left abstract shapes
+        $mpdf->WriteFixedPosHTML(
+            '<div style="background-color:' . $cRed . '; border-top-right-radius: 100%; width: 40mm; height: 40mm; opacity: 1;"></div>',
+            0,
+            257,
+            40,
+            40,
+            'hidden'
+        );
+        $mpdf->WriteFixedPosHTML(
+            '<div style="background-color:' . $cYellow . '; border-top-right-radius: 100%; width: 30mm; height: 30mm; opacity: 0.8;"></div>',
+            0,
+            267,
+            30,
+            30,
+            'hidden'
+        );
+
+        // Footer Text centered
+        $mpdf->WriteFixedPosHTML(
+            '<div style="text-align:center; font-size:9pt; color:' . $cNavy . '; font-weight: bold;">www.niongemastro.com | +91 910 430 1456</div>',
+            0,
+            285,
+            210,
+            10,
+            'hidden'
+        );
+
     }
 
     private static function resolveBrandLogoPath($logo)

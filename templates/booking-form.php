@@ -478,8 +478,18 @@ $initial_price = isset($services[0]['price']) ? $services[0]['price'] : $price;
                 </div>
 
                 <div class="gem-field">
-                    <label>🎂 Date of Birth</label>
+                    <label>🎂 Date of Birth / जन्म तिथि</label>
                     <input type="date" id="gemDob" name="dob" required>
+                </div>
+
+                <div class="gem-field">
+                    <label>⏰ Time of Birth / जन्म समय</label>
+                    <input type="time" id="gemTime" name="time" required>
+                </div>
+
+                <div class="gem-field">
+                    <label>📍 Place of Birth / जन्म स्थान</label>
+                    <input type="text" id="gemPlace" name="place" placeholder="City, State / शहर, राज्य" required>
                 </div>
 
                 <button type="button" class="gem-pay-btn" id="gemPayBtn" onclick="gemStartPayment()">
@@ -572,13 +582,15 @@ $initial_price = isset($services[0]['price']) ? $services[0]['price'] : $price;
             const phone = document.getElementById('gemPhone').value.trim();
             const email = document.getElementById('gemEmail').value.trim();
             const dob = document.getElementById('gemDob').value;
+            const time = document.getElementById('gemTime').value;
+            const place = document.getElementById('gemPlace').value.trim();
             const language = document.getElementById('gemLanguage').value;
 
             const errorDiv = document.getElementById('gemErrorMsg');
             errorDiv.style.display = 'none';
 
-            if (!name || !phone || !email || !dob) {
-                errorDiv.textContent = 'Please fill all fields!';
+            if (!name || !phone || !email || !dob || !time || !place) {
+                errorDiv.textContent = 'Please fill all fields! / कृपया सभी विवरण भरें!';
                 errorDiv.style.display = 'block';
                 return;
             }
@@ -618,7 +630,7 @@ $initial_price = isset($services[0]['price']) ? $services[0]['price'] : $price;
                     // openRazorpay stores it in global or passes it down
                     // We need to ensure verifyPayment also has access to this data.
                     // But verifyAndShowReport takes 'userData'. Let's add service details to userData.
-                    openRazorpay(res.data.order_id, { name, phone, email, dob, language, service_type: serviceType ?? 'pdf', service_name: serviceName });
+                    openRazorpay(res.data.order_id, { name, phone, email, dob, time, place, language, service_type: serviceType ?? 'pdf', service_name: serviceName });
                 } else {
                     showError('Order creation failed: ' + (res?.data?.message || 'Unknown error'));
                     resetBtn();
@@ -668,6 +680,8 @@ $initial_price = isset($services[0]['price']) ? $services[0]['price'] : $price;
                 data.append('phone', userData.phone);
                 data.append('email', userData.email);
                 data.append('dob', userData.dob);
+                data.append('time', userData.time);
+                data.append('place', userData.place);
                 data.append('booking_type', userData.service_type || 'pdf');
                 data.append('price', GEM_PRICE);
                 data.append('language', userData.language);
