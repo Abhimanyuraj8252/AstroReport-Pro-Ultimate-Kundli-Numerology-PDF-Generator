@@ -303,7 +303,7 @@ class GemAstroAdmin
         $sql = $wpdb->prepare("
             SELECT DATE(created_at) as date, SUM(amount) as total
             FROM $table_name
-            WHERE status = 'paid'
+            WHERE payment_status = 'paid'
             AND DATE(created_at) BETWEEN %s AND %s
             GROUP BY DATE(created_at)
         ", $start_date, $end_date);
@@ -878,7 +878,7 @@ class GemAstroAdmin
         <script>
             jQuery(document).ready(function ($) {
                 // View Booking
-                $('.ga-view-btn').on('click', function (e) {
+                $(document).on('click', '.ga-view-btn', function (e) {
                     e.preventDefault();
                     var id = $(this).data('id');
                     $('#ga-booking-modal').css('display', 'flex');
@@ -934,7 +934,7 @@ class GemAstroAdmin
                 });
 
                 // Delete Booking
-                $('.ga-delete-btn').on('click', function (e) {
+                $(document).on('click', '.ga-delete-btn', function (e) {
                     e.preventDefault();
                     if (!confirm('Are you sure you want to delete this booking? This cannot be undone.')) {
                         return;

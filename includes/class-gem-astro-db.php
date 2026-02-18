@@ -22,7 +22,7 @@ class GemAstroDB
         $charset_collate = $wpdb->get_charset_collate();
 
         $sql = "CREATE TABLE $table_name (
-            id mediumint(9) NOT NULL AUTO_INCREMENT,
+            id int(11) NOT NULL AUTO_INCREMENT,
             created_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
             name tinytext NOT NULL,
             phone tinytext NOT NULL,
@@ -60,6 +60,24 @@ class GemAstroDB
 
         $data = array_merge($defaults, $data);
 
+        $format = [
+            '%s', // created_at
+            '%s', // name
+            '%s', // phone
+            '%s', // email
+            '%s', // dob
+            '%s', // notes
+            '%s', // service_type
+            '%s', // date
+            '%s', // time
+            '%s', // place
+            '%s', // payment_id
+            '%s', // payment_status
+            '%f', // amount
+            '%s', // language
+            '%d'  // pdf_generated
+        ];
+
         $result = $wpdb->insert(
             $table_name,
             [
@@ -78,13 +96,48 @@ class GemAstroDB
                 'amount' => $data['amount'],
                 'language' => $data['language'],
                 'pdf_generated' => 0
-            ]
+            ],
+            $format
         );
 
         if ($result) {
             return $wpdb->insert_id;
+        } else {
+            // Error handling: Log error and try self-healing if table missing
+            error_log("GemAstro DB Error: " . $wpdb->last_error);
+
+            if (strpos($wpdb->last_error, "doesn't exist") !== false) {
+                self::create_table();
+                // Retry once
+                $result = $wpdb->insert(
+                    $table_name,
+                    [
+                        'created_at' => current_time('mysql'),
+                        'name' => $data['name'],
+                        'phone' => $data['phone'],
+                        'email' => $data['email'],
+                        'dob' => $data['dob'],
+                        'notes' => $data['notes'],
+                        'service_type' => $data['service_type'],
+                        'date' => $data['date'],
+                        'time' => $data['time'],
+                        'place' => $data['place'],
+                        'payment_id' => $data['payment_id'],
+                        'payment_status' => $data['payment_status'],
+                        'amount' => $data['amount'],
+                        'language' => $data['language'],
+                        'pdf_generated' => 0
+                    ],
+                    $format
+                );
+
+                if ($result) {
+                    return $wpdb->insert_id;
+                }
+            }
+
+            return false;
         }
-        return false;
     }
 
     public static function get_booked_slots($date)
@@ -123,6 +176,10 @@ class GemAstroDB
         if (!empty($filters['range']) && $filters['range'] !== 'all') {
             $interval = '7 DAY'; // default
             switch ($filters['range']) {
+                case 'today':
+                    $interval = '0 DAY'; // handled below specially or just let interval do it if logic supports
+                    // improved logic:
+                    break;
                 case '1d':
                     $interval = '1 DAY';
                     break;
@@ -154,7 +211,12 @@ class GemAstroDB
                     $interval = '10 YEAR';
                     break;
             }
-            $where .= " AND created_at >= DATE_SUB(NOW(), INTERVAL $interval)";
+
+            if ($filters['range'] === 'today') {
+                $where .= " AND DATE(created_at) = CURDATE()";
+            } else {
+                $where .= " AND created_at >= DATE_SUB(NOW(), INTERVAL $interval)";
+            }
         } elseif (!empty($filters['date'])) {
             // Specific single date fallback
             $where .= ' AND DATE(created_at) = %s';
