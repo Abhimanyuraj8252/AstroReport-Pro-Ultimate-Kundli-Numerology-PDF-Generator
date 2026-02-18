@@ -16,7 +16,7 @@ if (!defined('ABSPATH')) {
 // Define Plugin Constants
 define('GEM_ASTRO_PATH', plugin_dir_path(__FILE__));
 define('GEM_ASTRO_URL', plugin_dir_url(__FILE__));
-define('GEM_ASTRO_VERSION', '1.0.1');
+define('GEM_ASTRO_VERSION', '1.0.4');
 
 // Include necessary files
 require_once GEM_ASTRO_PATH . 'includes/data-mulank.php';
@@ -75,8 +75,8 @@ class GemAstrologyPlugin
         wp_localize_script('gem-astro-script', 'NION_BOOKING', [
             'ajax_url' => admin_url('admin-ajax.php'),
             'nonce' => wp_create_nonce('gem_astro_nonce'),
-            'razorpay_key' => get_option('gem_astro_razorpay_key', ''),
-            'pdf_price' => get_option('gem_astro_pdf_price', 1)
+            'razorpay_key' => get_option('gem_astro_razorpay_key'),
+            'pdf_price' => get_option('gem_astro_pdf_price', 0)
         ]);
     }
 
@@ -89,7 +89,7 @@ class GemAstrologyPlugin
         }
 
         $atts = shortcode_atts([
-            'price' => get_option('gem_astro_pdf_price', 1),
+            'price' => get_option('gem_astro_pdf_price', 149),
         ], $atts, 'astro_report');
 
         $price = $atts['price'];
@@ -196,6 +196,8 @@ class GemAstrologyPlugin
         ];
         $selected_language = $language_map[$selected_language] ?? 'hi';
 
+        $amount = floatval($_POST['price']);
+
         $booking_data = [
             'name' => sanitize_text_field($_POST['name']),
             'phone' => sanitize_text_field($_POST['phone']),
@@ -208,17 +210,23 @@ class GemAstrologyPlugin
             'place' => sanitize_text_field($_POST['place'] ?? ''),
             'payment_id' => $rzp_payment_id,
             'payment_status' => 'paid',
-            'amount' => floatval($_POST['price']),
+            'amount' => $amount,
             'language' => $selected_language
         ];
-        // Ensure table exists before inserting
+        // Ensure table exists (Proactive check)
         GemAstroDB::create_table();
 
         $booking_id = GemAstroDB::insert_booking($booking_data);
+        // Ensure language files are loaded
+        require_once GEM_ASTRO_PATH . 'includes/hindi.php';
+        require_once GEM_ASTRO_PATH . 'includes/english.php';
+        require_once GEM_ASTRO_PATH . 'includes/gujarati.php';
 
-        if (!$booking_id) {
-            error_log('GemAstro: insert_booking failed. Data: ' . print_r($booking_data, true));
-        }
+        // Debug logging to file
+        $log_file = GEM_ASTRO_PATH . 'gem_debug.log';
+        $log_msg = date('[Y-m-d H:i:s] ') . "Booking ID: $booking_id, Service: " . $booking_data['service_type'] . "\n";
+        file_put_contents($log_file, $log_msg, FILE_APPEND);
+
         if ($booking_id) {
             $pdf_url = '';
 
@@ -240,6 +248,8 @@ class GemAstrologyPlugin
                             $main_pdf_url = $result['url'];
                         }
                     } else {
+                        $error_msg = date('[Y-m-d H:i:s] ') . "PDF Fail ($lang): " . print_r($result, true) . "\n";
+                        file_put_contents($log_file, $error_msg, FILE_APPEND);
                         error_log("PDF Generation failed for language: $lang");
                     }
                 }

@@ -1180,6 +1180,7 @@ class GemAstroAdmin
 
         $saved = isset($_GET['settings-updated']) && $_GET['settings-updated'] === 'true';
         $key = get_option('gem_astro_razorpay_key', '');
+        $is_test_mode_free = get_option('gem_astro_test_mode_free') === '1';
         $is_live = !empty($key) && strpos($key, 'rzp_test_') !== 0;
         $is_test = !empty($key) && strpos($key, 'rzp_test_') === 0;
         ?>
@@ -1218,6 +1219,11 @@ class GemAstroAdmin
 
                 <form method="post" action="options.php">
                     <?php settings_fields('gem_astro_settings'); ?>
+
+                    <div class="ga-form-group"
+                        style="background: rgba(245, 166, 35, 0.1); border: 1px solid rgba(245, 166, 35, 0.3); padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                        <p class="description">Set price to 0 to make it free.</p>
+                    </div>
 
                     <div class="ga-form-group">
                         <label for="gem_astro_razorpay_key">Key ID</label>

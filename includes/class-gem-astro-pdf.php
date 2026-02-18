@@ -712,38 +712,40 @@ class GemAstroPDF
         );
 
         // Details Table - Clean & spaced with Golden Accents
-        $detailsHtml = '
-        <table style="font-family: sans-serif; color: #333; font-size: 11pt; width: 100%; border-collapse: separate; border-spacing: 0 4mm;">
-            <tr>
+        // Details Table - Clean & spaced with Golden Accents
+        $detailsHtml = '<table style="font-family: sans-serif; color: #333; font-size: 11pt; width: 100%; border-collapse: separate; border-spacing: 0 4mm;">';
+
+        // Name (Always show)
+        $detailsHtml .= '<tr>
                 <td style="font-weight: bold; width: 35%; color: #8B4513; vertical-align: middle; padding-left: 5mm; text-transform: uppercase; font-size: 9pt;">' . $l['name'] . '</td>
                 <td style="font-weight: 600; width: 65%; color: #000; vertical-align: middle; border-bottom: 1px solid #F0E68C; padding-bottom: 2mm;">' . $name . '</td>
-            </tr>
-            <tr>
-                <td style="font-weight: bold; width: 35%; color: #8B4513; vertical-align: middle; padding-left: 5mm; text-transform: uppercase; font-size: 9pt;">' . $l['email'] . '</td>
-                <td style="font-weight: 600; width: 65%; color: #000; vertical-align: middle; border-bottom: 1px solid #F0E68C; padding-bottom: 2mm;">' . $email . '</td>
-            </tr>
-            <tr>
-                <td style="font-weight: bold; width: 35%; color: #8B4513; vertical-align: middle; padding-left: 5mm; text-transform: uppercase; font-size: 9pt;">' . $l['phone'] . '</td>
-                <td style="font-weight: 600; width: 65%; color: #000; vertical-align: middle; border-bottom: 1px solid #F0E68C; padding-bottom: 2mm;">' . $phone . '</td>
-            </tr>
-            <tr>
-                <td style="font-weight: bold; width: 35%; color: #8B4513; vertical-align: middle; padding-left: 5mm; text-transform: uppercase; font-size: 9pt;">' . $l['dob'] . '</td>
-                <td style="font-weight: 600; width: 65%; color: #000; vertical-align: middle; border-bottom: 1px solid #F0E68C; padding-bottom: 2mm;">' . $dob . '</td>
-            </tr>
-            <tr>
-                <td style="font-weight: bold; width: 35%; color: #8B4513; vertical-align: middle; padding-left: 5mm; text-transform: uppercase; font-size: 9pt;">' . $l['time'] . '</td>
-                <td style="font-weight: 600; width: 65%; color: #000; vertical-align: middle; border-bottom: 1px solid #F0E68C; padding-bottom: 2mm;">' . $time . '</td>
-            </tr>
-            <tr>
-                <td style="font-weight: bold; width: 35%; color: #8B4513; vertical-align: middle; padding-left: 5mm; text-transform: uppercase; font-size: 9pt;">' . $l['place'] . '</td>
-                <td style="font-weight: 600; width: 65%; color: #000; vertical-align: middle; border-bottom: 1px solid #F0E68C; padding-bottom: 2mm;">' . $place . '</td>
-            </tr>
-             <tr>
+            </tr>';
+
+        // Optional Fields
+        $optionalFields = [
+            'email' => ['label' => $l['email'], 'value' => $email],
+            'phone' => ['label' => $l['phone'], 'value' => $phone],
+            'dob' => ['label' => $l['dob'], 'value' => $dob], // DOB usually required but good to be safe
+            'time' => ['label' => $l['time'], 'value' => $time],
+            'place' => ['label' => $l['place'], 'value' => $place],
+        ];
+
+        foreach ($optionalFields as $key => $data) {
+            if (!empty($data['value'])) {
+                $detailsHtml .= '<tr>
+                    <td style="font-weight: bold; width: 35%; color: #8B4513; vertical-align: middle; padding-left: 5mm; text-transform: uppercase; font-size: 9pt;">' . $data['label'] . '</td>
+                    <td style="font-weight: 600; width: 65%; color: #000; vertical-align: middle; border-bottom: 1px solid #F0E68C; padding-bottom: 2mm;">' . $data['value'] . '</td>
+                </tr>';
+            }
+        }
+
+        // Language (Always show)
+        $detailsHtml .= '<tr>
                 <td style="font-weight: bold; width: 35%; color: #8B4513; vertical-align: middle; padding-left: 5mm; text-transform: uppercase; font-size: 9pt;">' . $l['lang'] . '</td>
                 <td style="font-weight: 600; width: 65%; color: #000; vertical-align: middle; border-bottom: 1px solid #F0E68C; padding-bottom: 2mm;">' . $langLabel . '</td>
-            </tr>
-        </table>
-        ';
+            </tr>';
+
+        $detailsHtml .= '</table>';
 
         $mpdf->WriteFixedPosHTML(
             $detailsHtml,

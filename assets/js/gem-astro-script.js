@@ -83,11 +83,13 @@ window.openGemAstroBooking = async function (type, price, title) {
 
     // Price check moved lower after ensuresGemConfig
 
-    const name = document.getElementById('name')?.value || document.getElementById('form-field-name')?.value;
-    const email = document.getElementById('email')?.value || document.getElementById('form-field-email')?.value;
-    const phone = document.getElementById('phone')?.value || document.getElementById('form-field-phone')?.value;
-    const dob = document.getElementById('dob')?.value || document.getElementById('form-field-dob')?.value;
-    const language = document.getElementById('language')?.value || document.getElementById('form-field-language')?.value || 'hi';
+    const name = document.getElementById('name')?.value || document.getElementById('form-field-name')?.value || document.getElementById('gemName')?.value;
+    const email = document.getElementById('email')?.value || document.getElementById('form-field-email')?.value || document.getElementById('gemEmail')?.value;
+    const phone = document.getElementById('phone')?.value || document.getElementById('form-field-phone')?.value || document.getElementById('gemPhone')?.value;
+    const dob = document.getElementById('dob')?.value || document.getElementById('form-field-dob')?.value || document.getElementById('gemDob')?.value;
+    const language = document.getElementById('language')?.value || document.getElementById('form-field-language')?.value || document.getElementById('gemLanguage')?.value || 'hi';
+    const time = document.getElementById('time')?.value || document.getElementById('form-field-time')?.value || document.getElementById('gemTime')?.value || '';
+    const place = document.getElementById('place')?.value || document.getElementById('form-field-place')?.value || document.getElementById('gemPlace')?.value || '';
 
     if (!name || !email || !phone || !dob) {
         alert("Please fill in all required fields (Name, Email, Phone, DOB).");
@@ -139,7 +141,7 @@ window.openGemAstroBooking = async function (type, price, title) {
             description: title || 'Astrology Service',
             order_id: orderRes.data.order_id,
             handler: function (response) {
-                verifyPayment(response, { name, email, phone, dob, language, type, price }, btn, originalText);
+                verifyPayment(response, { name, email, phone, dob, language, type, price, time, place }, btn, originalText);
             },
             prefill: {
                 name,
@@ -202,8 +204,9 @@ async function verifyPayment(response, data, btn, originalText) {
             postData.append('booking_type', data.type);
             postData.append('price', String(data.price));
             postData.append('language', data.language);
+            postData.append('time', data.time || '');
+            postData.append('place', data.place || '');
             postData.append('date', '');
-            postData.append('time', '');
             postData.append('notes', '');
             return postData;
         });
@@ -211,9 +214,10 @@ async function verifyPayment(response, data, btn, originalText) {
         if (verifyRes && verifyRes.success) {
             if (verifyRes.data && verifyRes.data.pdf_url) {
                 triggerPdfDownload(verifyRes.data.pdf_url, data.name);
-                alert('Success! PDF is downloading and report sent on email.');
+                alert('✅ Success! PDF is downloading and report has been sent to your email.');
             } else {
-                alert('Success! Booking saved. Check email.');
+                console.warn('GemAstro: No pdf_url in response. Full response:', verifyRes);
+                alert('✅ Booking confirmed! Report is being generated. Check your email shortly.');
             }
         } else {
             throw new Error(verifyRes?.data?.message || 'Verification failed.');
