@@ -365,8 +365,8 @@ class GemAstroAdmin
                     </div>
                 </div>
                 <div class="ga-header-right">
-                    <select id="ga-stats-range" class="ga-select" onchange="refreshStats()"
-                        style="margin-right:15px;padding:6px;border-radius:6px;background:rgba(255,255,255,0.1);color:#fff;border:1px solid rgba(255,255,255,0.2);">
+                    <select id="ga-stats-range" class="ga-select"
+                        style="margin-right:5px;padding:6px;border-radius:6px;background:rgba(255,255,255,0.1);color:#fff;border:1px solid rgba(255,255,255,0.2);">
                         <option value="today">Today</option>
                         <option value="7d" selected>Last 7 Days</option>
                         <option value="15d">Last 15 Days</option>
@@ -376,8 +376,11 @@ class GemAstroAdmin
                         <option value="1y">Last 1 Year</option>
                         <option value="3y">Last 3 Years</option>
                         <option value="5y">Last 5 Years</option>
+                        <option value="10y">Last 10 Years</option>
                         <option value="all">All Time</option>
                     </select>
+                    <button type="button" class="ga-btn ga-btn-primary" onclick="refreshStats()"
+                        style="padding:6px 12px;font-size:13px;margin-right:15px;">Apply</button>
                     <span class="ga-live-badge" id="ga-live-badge">
                         <span class="ga-live-dot"></span> LIVE
                     </span>
@@ -691,16 +694,23 @@ class GemAstroAdmin
                 <div class="ga-card-header" style="flex-wrap:wrap;gap:15px;">
                     <h3>📋 Bookings</h3>
 
-                    <div class="ga-table-filters" style="display:flex;gap:10px;flex:1;justify-content:flex-end;">
-                        <select id="ga-bookings-range" class="ga-select ga-select-small" onchange="filterBookings()"
+                    <div class="ga-table-filters"
+                        style="display:flex;gap:10px;flex:1;justify-content:flex-end;align-items:center;">
+                        <select id="ga-bookings-range" class="ga-select ga-select-small"
                             style="background:rgba(255,255,255,0.1);color:#fff;border:1px solid rgba(255,255,255,0.1);border-radius:4px;padding:4px 8px;">
                             <option value="all">All Time</option>
                             <option value="today">Today</option>
                             <option value="7d">Last 7 Days</option>
+                            <option value="15d">Last 15 Days</option>
                             <option value="1m">Last 1 Month</option>
+                            <option value="3m">Last 3 Months</option>
+                            <option value="6m">Last 6 Months</option>
                             <option value="1y">Last 1 Year</option>
+                            <option value="3y">Last 3 Years</option>
+                            <option value="5y">Last 5 Years</option>
+                            <option value="10y">Last 10 Years</option>
                         </select>
-                        <select id="ga-bookings-sort" class="ga-select ga-select-small" onchange="filterBookings()"
+                        <select id="ga-bookings-sort" class="ga-select ga-select-small"
                             style="background:rgba(255,255,255,0.1);color:#fff;border:1px solid rgba(255,255,255,0.1);border-radius:4px;padding:4px 8px;">
                             <option value="date">Newest First</option>
                             <option value="date_asc">Oldest First</option>
@@ -709,7 +719,9 @@ class GemAstroAdmin
                             <option value="name">Name (A-Z)</option>
                         </select>
                         <input type="text" id="ga-bookings-search" placeholder="Search..." class="ga-input ga-input-small"
-                            oninput="filterBookings()" style="width:150px;padding:4px 8px;font-size:13px;">
+                            style="width:150px;padding:4px 8px;font-size:13px;">
+                        <button type="button" class="ga-btn ga-btn-primary" onclick="filterBookings()"
+                            style="padding:4px 10px;font-size:12px;height:auto;">Apply</button>
                     </div>
                 </div>
                 <div class="ga-table-wrap">

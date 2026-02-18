@@ -147,6 +147,9 @@ class GemAstroDB
                 case '5y':
                     $interval = '5 YEAR';
                     break;
+                case '10y':
+                    $interval = '10 YEAR';
+                    break;
             }
             $where .= " AND created_at >= DATE_SUB(NOW(), INTERVAL $interval)";
         } elseif (!empty($filters['date'])) {
@@ -294,6 +297,10 @@ class GemAstroDB
                 case '5y':
                     $interval = '5 YEAR';
                     $interval_days = 1825;
+                    break;
+                case '10y':
+                    $interval = '10 YEAR';
+                    $interval_days = 3650;
                     break;
                 default:
                     $interval = '7 DAY';

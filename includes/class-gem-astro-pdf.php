@@ -94,14 +94,19 @@ class GemAstroPDF
                 ]),
                 'fontdata' => $fontData + [
                     'notosansdevanagari' => [
-                        'R' => 'NotoSansDevanagari-VariableFont_wdth,wght.ttf',
-                        'B' => 'NotoSansDevanagari_ExtraCondensed-Bold.ttf',
+                        'R' => 'NotoSansDevanagari-Regular.ttf',
+                        'B' => 'NotoSansDevanagari-Bold.ttf',
+                        'useOTL' => 0xFF,
+                        'useKashida' => 75,
                     ],
                     'notosansgujarati' => [
                         'R' => 'NotoSansGujarati-Regular.ttf',
                         'B' => 'NotoSansGujarati-Bold.ttf',
+                        'useOTL' => 0xFF,
+                        'useKashida' => 75,
                     ]
                 ],
+                'default_font' => 'dejavusans',
                 'languageToFont' => $languageToFontImpl,
             ]);
 
