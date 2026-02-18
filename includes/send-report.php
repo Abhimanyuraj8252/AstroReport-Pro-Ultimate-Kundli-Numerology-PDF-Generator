@@ -102,19 +102,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'language' => $language
     ];
 
-    // Generate report in selected language only
-    $result = GemAstroPDF::generate_report($booking_data);
-    $selected_attachment = (is_array($result) && !empty($result['path']) && file_exists($result['path']))
-        ? $result['path']
-        : '';
+    // Generate PDFs for ALL languages (En, Hi, Gu)
+    $languages = ['en', 'hi', 'gu'];
+    $generated_pdfs = [];
 
-    if (!empty($selected_attachment)) {
-        // Send one email with selected language attachment
+    foreach ($languages as $lang) {
+        $booking_data['language'] = $lang;
+        $result = GemAstroPDF::generate_report($booking_data);
+
+        if (is_array($result) && !empty($result['path']) && file_exists($result['path'])) {
+            $generated_pdfs[] = $result['path'];
+        }
+    }
+
+    if (!empty($generated_pdfs)) {
+        // Send email with ALL generated PDFs
         $to = $email;
 
         // Use configured email template or defaults
         $default_subject = '🌟 Your Personalized GEM Astrology Report';
-        $default_body = "<h1>Namaste {name},</h1><p>Thank you for choosing Nion Gem Astro. Your personalized astrology report is attached in your selected language.</p><p><strong>Note:</strong> Save these files for future reference.</p><p>Regards,<br>Team Nion Gem Astro</p>";
+        $default_body = "<h1>Namaste {name},</h1><p>Thank you for choosing Nion Gem Astro. Your personalized astrology report is attached in English, Hindi, and Gujarati.</p><p><strong>Note:</strong> Save these files for future reference.</p><p>Regards,<br>Team Nion Gem Astro</p>";
 
         if (function_exists('get_option')) {
             $subject = get_option('gem_astro_email_subject', $default_subject);
@@ -128,12 +135,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $subject = str_replace('{name}', $name, $subject);
         $body = str_replace('{name}', $name, $body);
 
-        $headers = ['Content-Type: text/html; charset=UTF-8'];
+        $headers = [];
+        $headers[] = 'Content-Type: text/html; charset=UTF-8';
 
-        $sent = wp_mail($to, $subject, $body, $headers, [$selected_attachment]);
+        // Add Admin Email to Bcc
+        if (function_exists('get_option')) {
+            $admin_email = get_option('gem_astro_contact_email', '');
+            if (!empty($admin_email) && is_email($admin_email)) {
+                $headers[] = 'Bcc: ' . $admin_email;
+            }
+        }
+
+        $sent = wp_mail($to, $subject, $body, $headers, $generated_pdfs);
 
         if ($sent) {
-            echo "Success: Email sent with selected language report.";
+            echo "Success: Email sent with English, Hindi, and Gujarati reports.";
         } else {
             echo "Error: Failed to send email.";
         }

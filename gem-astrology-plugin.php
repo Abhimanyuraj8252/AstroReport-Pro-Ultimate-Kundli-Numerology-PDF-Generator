@@ -205,24 +205,46 @@ class GemAstrologyPlugin
 
             if ($booking_data['service_type'] === 'pdf') {
                 // Generate PDF in selected language for both download and email
-                $booking_data['language'] = $selected_language;
-                $download_result = GemAstroPDF::generate_report($booking_data);
-                $selected_pdf_path = '';
+                // Generate PDFs for ALL languages (En, Hi, Gu)
+                $languages = ['en', 'hi', 'gu'];
+                $generated_pdfs = [];
+                $main_pdf_url = '';
 
-                if (is_array($download_result) && isset($download_result['url'])) {
-                    $pdf_url = $download_result['url'];
-                    $selected_pdf_path = $download_result['path'] ?? '';
-                } else {
-                    error_log('PDF Generation failed for booking ' . $booking_id);
+                foreach ($languages as $lang) {
+                    $booking_data['language'] = $lang;
+                    $result = GemAstroPDF::generate_report($booking_data);
+
+                    if (is_array($result) && isset($result['path']) && file_exists($result['path'])) {
+                        $generated_pdfs[] = $result['path'];
+                        // Set the selected language PDF as the main download URL
+                        if ($lang === $selected_language) {
+                            $main_pdf_url = $result['url'];
+                        }
+                    } else {
+                        error_log("PDF Generation failed for language: $lang");
+                    }
                 }
 
-                // Send email with selected language PDF only
-                if (!empty($selected_pdf_path) && file_exists($selected_pdf_path) && !empty($booking_data['email'])) {
+                // Fallback: if selected language failed, use first available PDF as main URL
+                if (empty($main_pdf_url) && !empty($generated_pdfs)) {
+                    // We need to reconstruct URL from path since we didn't save it in array
+                    $upload_dir = wp_upload_dir();
+                    $main_pdf_url = str_replace(
+                        [$upload_dir['basedir'], '\\'],
+                        [$upload_dir['baseurl'], '/'],
+                        $generated_pdfs[0]
+                    );
+                }
+
+                $pdf_url = $main_pdf_url;
+
+                // Send email with ALL generated PDFs
+                if (!empty($generated_pdfs) && !empty($booking_data['email'])) {
                     $to = $booking_data['email'];
 
                     // Use configured email template or defaults
                     $default_subject = '🌟 Your Personalized AstroReport Pro Report';
-                    $default_body = '<h1>Namaste {name},</h1><p>Thank you for choosing AstroReport Pro. Your personalized astrology report is attached in your selected language.</p><p><strong>Note:</strong> Save these files for future reference.</p><p>Regards,<br>Team Trikrypta</p>';
+                    $default_body = '<h1>Namaste {name},</h1><p>Thank you for choosing AstroReport Pro. Your personalized astrology report is attached in English, Hindi, and Gujarati.</p><p><strong>Note:</strong> Save these files for future reference.</p><p>Regards,<br>Team Trikrypta</p>';
 
                     $subject = get_option('gem_astro_email_subject', $default_subject);
                     $body = get_option('gem_astro_email_body', $default_body);
@@ -231,8 +253,58 @@ class GemAstrologyPlugin
                     $subject = str_replace('{name}', esc_html($booking_data['name']), $subject);
                     $body = str_replace('{name}', esc_html($booking_data['name']), $body);
 
-                    $headers = ['Content-Type: text/html; charset=UTF-8'];
-                    wp_mail($to, $subject, $body, $headers, [$selected_pdf_path]);
+                    $headers = [];
+                    $headers[] = 'Content-Type: text/html; charset=UTF-8';
+
+                    // Add Admin Email to Bcc
+                    $admin_email = get_option('gem_astro_contact_email', '');
+                    if (!empty($admin_email) && is_email($admin_email)) {
+                        $headers[] = 'Bcc: ' . $admin_email;
+                    }
+
+                    // Attach all 3 files
+                    wp_mail($to, $subject, $body, $headers, $generated_pdfs);
+                }
+            } else {
+                // Handle Non-PDF Services (e.g., Consultation)
+                // Send confirmation email with booking details to Client + Admin (Bcc)
+                if (!empty($booking_data['email'])) {
+                    $to = $booking_data['email'];
+                    $subject = 'Booking Confirmed: ' . ucfirst($booking_data['service_type']);
+
+                    // Build HTML Body with Details
+                    $body = '<h1>Namaste ' . esc_html($booking_data['name']) . ',</h1>';
+                    $body .= '<p>Thank you for booking with us. Your appointment details are below:</p>';
+                    $body .= '<table style="width:100%; border-collapse:collapse; text-align:left;">';
+                    $body .= '<tr><th style="border:1px solid #ddd; padding:8px;">Service</th><td style="border:1px solid #ddd; padding:8px;">' . esc_html(ucfirst($booking_data['service_type'])) . '</td></tr>';
+                    $body .= '<tr><th style="border:1px solid #ddd; padding:8px;">Name</th><td style="border:1px solid #ddd; padding:8px;">' . esc_html($booking_data['name']) . '</td></tr>';
+                    $body .= '<tr><th style="border:1px solid #ddd; padding:8px;">Phone</th><td style="border:1px solid #ddd; padding:8px;">' . esc_html($booking_data['phone']) . '</td></tr>';
+                    $body .= '<tr><th style="border:1px solid #ddd; padding:8px;">DOB</th><td style="border:1px solid #ddd; padding:8px;">' . esc_html($booking_data['dob']) . '</td></tr>';
+
+                    if (!empty($booking_data['date'])) {
+                        $body .= '<tr><th style="border:1px solid #ddd; padding:8px;">Date</th><td style="border:1px solid #ddd; padding:8px;">' . esc_html($booking_data['date']) . '</td></tr>';
+                    }
+                    if (!empty($booking_data['time'])) {
+                        $body .= '<tr><th style="border:1px solid #ddd; padding:8px;">Time</th><td style="border:1px solid #ddd; padding:8px;">' . esc_html($booking_data['time']) . '</td></tr>';
+                    }
+                    if (!empty($booking_data['notes'])) {
+                        $body .= '<tr><th style="border:1px solid #ddd; padding:8px;">Notes</th><td style="border:1px solid #ddd; padding:8px;">' . nl2br(esc_html($booking_data['notes'])) . '</td></tr>';
+                    }
+
+                    $body .= '</table>';
+                    $body .= '<p>We will contact you shortly.</p>';
+                    $body .= '<p>Regards,<br>Team Trikrypta</p>';
+
+                    $headers = [];
+                    $headers[] = 'Content-Type: text/html; charset=UTF-8';
+
+                    // Add Admin Email to Bcc
+                    $admin_email = get_option('gem_astro_contact_email', '');
+                    if (!empty($admin_email) && is_email($admin_email)) {
+                        $headers[] = 'Bcc: ' . $admin_email;
+                    }
+
+                    wp_mail($to, $subject, $body, $headers);
                 }
             }
 

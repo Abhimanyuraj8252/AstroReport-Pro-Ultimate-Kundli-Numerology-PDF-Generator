@@ -56,6 +56,27 @@ class GemAstroPDF
 
         try {
             // Initialize mPDF
+            // Initialize mPDF with Font Configuration
+            $defaultConfig = (new \Mpdf\Config\ConfigVariables())->getDefaults();
+            $fontDirs = $defaultConfig['fontDir'];
+
+            $defaultFontConfig = (new \Mpdf\Config\FontVariables())->getDefaults();
+            $fontData = $defaultFontConfig['fontdata'];
+
+            // Use anonymous class to override LanguageToFont mapping for Hindi and Gujarati
+            $languageToFontImpl = new class extends \Mpdf\Language\LanguageToFont {
+                public function getLanguageOptions($llcc, $adobeCJK)
+                {
+                    if ($llcc === 'hi' || $llcc === 'hin') {
+                        return [true, 'notosansdevanagari'];
+                    }
+                    if ($llcc === 'gu' || $llcc === 'guj') {
+                        return [true, 'notosansgujarati'];
+                    }
+                    return parent::getLanguageOptions($llcc, $adobeCJK);
+                }
+            };
+
             $mpdf = new \Mpdf\Mpdf([
                 'mode' => 'utf-8',
                 'format' => 'A4',
@@ -65,7 +86,23 @@ class GemAstroPDF
                 'margin_bottom' => 0,
                 'margin_header' => 0,
                 'margin_footer' => 0,
-                'orientation' => 'P'
+                'orientation' => 'P',
+                'autoScriptToLang' => true,
+                'autoLangToFont' => true,
+                'fontDir' => array_merge($fontDirs, [
+                    GEM_ASTRO_PATH . 'fonts',
+                ]),
+                'fontdata' => $fontData + [
+                    'notosansdevanagari' => [
+                        'R' => 'NotoSansDevanagari-VariableFont_wdth,wght.ttf',
+                        'B' => 'NotoSansDevanagari_ExtraCondensed-Bold.ttf',
+                    ],
+                    'notosansgujarati' => [
+                        'R' => 'NotoSansGujarati-Regular.ttf',
+                        'B' => 'NotoSansGujarati-Bold.ttf',
+                    ]
+                ],
+                'languageToFont' => $languageToFontImpl,
             ]);
 
             $mpdf->SetTitle('Kundli Report - ' . $name);
@@ -73,7 +110,7 @@ class GemAstroPDF
             $mpdf->SetCreator('Gem Astrology');
 
             // Render Cover Page
-            self::renderCoverPage($mpdf, $name, $brand);
+            self::renderCoverPage($mpdf, $name, $brand, $language);
 
             // Render Content Pages (Continuous Flow)
             if (count($sections) > 0) {
@@ -109,7 +146,7 @@ class GemAstroPDF
         }
     }
 
-    private static function renderCoverPage($mpdf, $name, $brand)
+    private static function renderCoverPage($mpdf, $name, $brand, $language = 'en')
     {
         $mpdf->AddPage();
 
@@ -123,6 +160,8 @@ class GemAstroPDF
         $cTtBlue = '#183282';
         $cTxDark = '#333333';
         $cGrOr = '#F05A28';
+
+        // Font Stack removed - relying on mPDF languageToFont mapping
 
         // Full-page cream background
         $mpdf->WriteFixedPosHTML(
@@ -166,18 +205,18 @@ class GemAstroPDF
         // Logo on Left Column (Above Geometry which starts at y=95)
         if (!empty($logoPath) && file_exists($logoPath)) {
             $mpdf->WriteFixedPosHTML(
-                '<div><img src="' . $logoPath . '" style="width:65mm;" /></div>',
+                '<div><img src="' . $logoPath . '" style="width:75mm;" /></div>',
                 15,
-                38,
-                70,
-                60,
+                20,
+                80,
+                80,
                 'hidden'
             );
         }
 
         // Title on Right Column (Always show title for consistent layout)
         $mpdf->WriteFixedPosHTML(
-            '<div style="font-family:sans-serif;font-weight:bold;font-size:16pt;color:' . $cTtBlue . ';">'
+            '<div style="font-weight:bold;font-size:16pt;color:' . $cTtBlue . ';">'
             . (string) ($brand['title'] ?? 'NION GEM ASTRO')
             . '</div>',
             106,
@@ -188,8 +227,14 @@ class GemAstroPDF
         );
 
         // Tagline
+        // Use normal style for Indic scripts because we don't have Italic font variants loaded
+        $taglineStyle = 'italic';
+        if ($language === 'hi' || $language === 'gu') {
+            $taglineStyle = 'normal';
+        }
+
         $mpdf->WriteFixedPosHTML(
-            '<div style="font-family:sans-serif;font-style:italic;font-size:9pt;color:' . $cTxDark . ';">'
+            '<div style="font-style:' . $taglineStyle . ';font-size:9pt;color:' . $cTxDark . ';">'
             . (string) ($brand['tagline'] ?? 'Let\'s bring you the new life')
             . '</div>',
             106,
@@ -201,7 +246,7 @@ class GemAstroPDF
 
         // ===== GREETING =====
         $mpdf->WriteFixedPosHTML(
-            '<div style="font-family:sans-serif;font-weight:bold;font-size:26pt;color:' . $cGrOr . ';">Hello '
+            '<div style="font-weight:bold;font-size:26pt;color:' . $cGrOr . ';">Hello '
             . (string) $name . ',</div>',
             106,
             72,
@@ -219,7 +264,7 @@ class GemAstroPDF
             $wHtml .= '<div style="font-weight:' . $fw . ';font-size:20pt;line-height:1.3;color:#000;">' . $wl . '</div>';
         }
         $mpdf->WriteFixedPosHTML(
-            '<div style="font-family:sans-serif;">' . $wHtml . '</div>',
+            '<div>' . $wHtml . '</div>',
             106,
             108,
             95,
@@ -232,7 +277,7 @@ class GemAstroPDF
         $phone = (string) ($brand['phone'] ?? '+91 9801834437');
         $email = (string) ($brand['email'] ?? 'novanexusltd001@gmail.com');
 
-        $preparedHtml = '<div style="font-family:sans-serif;color:' . $cTxDark . ';">'
+        $preparedHtml = '<div style="color:' . $cTxDark . ';">'
             . '<div style="font-weight:bold;font-size:12pt;margin-bottom:2mm;">Prepared by</div>'
             . '<div style="font-size:10pt;line-height:1.5;">Web: ' . $websiteDisplay . '</div>'
             . '<div style="font-size:10pt;line-height:1.5;">Phone: ' . $phone . '</div>'

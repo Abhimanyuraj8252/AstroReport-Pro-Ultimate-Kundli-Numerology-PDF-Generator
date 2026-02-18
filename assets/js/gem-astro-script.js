@@ -81,10 +81,7 @@ window.openGemAstroBooking = async function (type, price, title) {
     }
 
 
-    // Use configured price for PDF if available
-    if (type === 'pdf' && GEM_ASTRO_CONFIG.pdfPrice > 0) {
-        price = GEM_ASTRO_CONFIG.pdfPrice;
-    }
+    // Price check moved lower after ensuresGemConfig
 
     const name = document.getElementById('name')?.value || document.getElementById('form-field-name')?.value;
     const email = document.getElementById('email')?.value || document.getElementById('form-field-email')?.value;
@@ -109,6 +106,11 @@ window.openGemAstroBooking = async function (type, price, title) {
         btn.disabled = false;
         btn.innerText = originalText;
         return;
+    }
+
+    // Use configured price for PDF if available (AFTER refetching config)
+    if (type === 'pdf' && GEM_ASTRO_CONFIG.pdfPrice > 0) {
+        price = GEM_ASTRO_CONFIG.pdfPrice;
     }
 
     try {
